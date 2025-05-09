@@ -1,0 +1,147 @@
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!
+!! Title:	nacitar_fbstyle
+!! By:		nacitar sevaht
+!!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!! FONTS
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+*.font:				dejavu sans-8:bold
+menu.frame.font: 		dejavu sans-8
+
+! Font effects
+*.font.effect: 			halo
+*.font.halo.color:		black
+
+! Without this, the clock format window is black text with black halo!
+window.font.effect: none
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!! SETTINGS
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+! justification of text
+*.justify:					center
+menu.frame.justify:			left
+menu.hilite.justify:		left
+
+! rounded corners
+toolbar.shaped:             false
+window.roundCorners: 		none
+menu.roundCorners:			TopRight TopLeft BottomRight BottomLeft
+
+! border widths
+toolbar.borderWidth:			0
+toolbar.iconbar.borderWidth:	0
+window.borderWidth:				1
+menu.borderWidth:				1
+
+! bar/menu heights
+toolbar.height:					20
+window.title.height:			20
+menu.itemHeight:				20
+menu.titleHeight:				20
+
+! window bottom bar/resize grip width (though it's more like height imo)
+! Can be disabled globally in init via:
+!   session.screen0.defaultDeco: 0x3fd
+! Or in the apps file via:
+!   [app] (class=.*)
+!       [Deco] {0x3fd}
+!   [end]
+! however the apps file FORCES all the other features on every window,
+! so you'll want to do this in init.
+!
+! NOTE: setting it to 0 causes rendering issues when making windows taller
+handleWidth:					1
+
+! menu bullet type
+menu.bullet:				triangle
+menu.bullet.position:			right
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!! COLORS
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+! Unfocused(default) background color
+*.color:				grey30
+*.colorTo:				grey5
+
+! Focused background color
+toolbar*.focused.color:		grey55
+window*.focus.color:		grey55
+menu.hilite.color:			grey55
+
+! Focused(default) text color
+*.textColor:			white
+*.picColor:				white
+
+! Unfocused text color
+toolbar*.unfocused.textColor:	grey55
+window*.unfocus.textColor:		grey55
+window*.unfocus.picColor:		grey55
+menu.frame.disableColor:       	grey55
+
+! window bottom bar/resize grip color
+window.handle.focus.color:		white
+window.handle.unfocus.color:	white
+window.grip.unfocus.color:		white
+window.handle.focus.colorTo:	grey60
+window.handle.unfocus.colorTo:	grey60
+window.grip.unfocus.colorTo:	grey60
+
+! Menu background color
+menu.frame.color:	black
+menu.frame.colorTo:	black
+
+! Pressed button color
+*.pressed.color:	grey20
+*.pressed.colorTo:	grey40
+
+! border color
+*.borderColor: grey60
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!! THEME IMPLEMENTATION
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+! default bevel width
+*.bevelWidth:				0
+
+! button style
+*.button.pressed: sunken gradient crossdiagonal
+
+toolbar:			gradient vertical
+toolbar.clock:		gradient vertical
+toolbar.workspace:	gradient vertical
+
+toolbar.iconbar.focused:	raised gradient vertical
+toolbar.iconbar.unfocused:	sunken gradient vertical
+toolbar.iconbar.empty:		gradient vertical
+
+window.label.focus:			gradient vertical
+window.label.unfocus:		gradient vertical
+window.button.focus:		gradient vertical
+window.button.unfocus:		gradient vertical
+
+window.handle.focus:		raised gradient vertical
+window.handle.unfocus:		raised gradient vertical
+window.grip.focus:			raised gradient vertical
+window.grip.unfocus:		raised gradient vertical
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!! MENU
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+menu.hilite:	raised gradient vertical
+menu.title:		gradient vertical
+menu.frame:		gradient vertical
+
+#toolbar.iconbar.focused.color:			#4E5A6A
+#toolbar.iconbar.focused.colorTo:		#010508
+#toolbar.iconbar.unfocused.color:		#3C4552
+#toolbar.iconbar.unfocused.colorTo:		#010508
+
+! rootCommand:	startup.sh
+
+!! EOF
+

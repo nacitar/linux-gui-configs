@@ -1,0 +1,21 @@
+#!/bin/bash
+export XDG_CURRENT_DESKTOP=Fluxbox
+export XDG_SESSION_TYPE=x11
+export XDG_SESSION_DESKTOP=fluxbox
+export XDG_RUNTIME_DIR="/run/user/${UID}"
+dbus-update-activation-environment --systemd \
+    DISPLAY XAUTHORITY \
+    XDG_CURRENT_DESKTOP XDG_SESSION_TYPE XDG_SESSION_DESKTOP XDG_RUNTIME_DIR
+systemctl --user start xdg-desktop-portal.service
+systemctl --user start xsettingsd.service
+pushd "${DISPLAY_SERVICE_LOG_DIR:-/tmp}" &>/dev/null
+env > xenv
+# remove any previously set wallpaper; nitrogen will cover it.
+rm -f "${HOME}/.fluxbox/lastwallpaper"
+command -v nitrogen &>/dev/null && nitrogen --restore &>nitrogen.log
+# background services
+command -v picom &>/dev/null && picom &>picom.log &
+command -v dunst &>/dev/null && dunst &>dunst.log &
+command -v steam &>/dev/null && steam &>steam.log &
+popd &>/dev/null
+exec fluxbox

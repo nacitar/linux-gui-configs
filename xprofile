@@ -1,0 +1,49 @@
+#!/bin/bash
+# this file is natively sourced by: GDM, LightDM, LXDM, SDDM
+
+# use whatever environment bash expects
+[ -r "${HOME}/.bash_profile" ] && . "${HOME}/.bash_profile"
+
+# force rendering on the discrete GPU (card and PC specific!)
+#export DRI_PRIME='pci-0000_01_00_0'
+#export MESA_LOADER_DRIVER_OVERRIDE='radeonsi'
+#export MESA_VK_DEVICE_SELECT='1002:67ff!'
+#export MESA_VK_DEVICE_SELECT_FORCE_DEFAULT_DEVICE='1'
+#export VK_ICD_FILENAMES="/usr/share/vulkan/icd.d/radeon_icd.x86_64.json"
+#export VK_ICD_FILENAMES="${VK_ICD_FILENAMES}:${VK_ICD_FILENAMES//x86_64/i686}"
+#export VK_LAYER_PATH='/usr/share/vulkan/implicit_layer.d'
+#export __GLX_VENDOR_LIBRARY_NAME='amd'
+#export MESA_GL_VERSION_OVERRIDE=4.6
+
+# force vsync
+#export vblank_mode='1'
+#export MESA_GL_VBLANK_ALWAYS_SYNC=1
+#export VK_PRESENT_MODE=VK_PRESENT_MODE_FIFO_KHR
+
+# X settings
+xset s off  # disable screen blanking
+xset -dpms  # disable dpms
+
+# set all connected monitors to be tearfree; better done in xorg.conf.d
+#xrandr --query | sed -n 's/^\([^ ]\+\) connected .*$/\1/p' \
+#        | while read -r display; do
+#    xrandr --output "${display}" --set TearFree on
+#done
+
+# Setup and clear logs for startup services
+DISPLAY_SERVICE_LOG_DIR="$(realpath -q "${BASH_SOURCE[0]}")"
+DISPLAY_SERVICE_LOG_DIR="${DISPLAY_SERVICE_LOG_DIR%/*}/logs"
+if [ -d "${DISPLAY_SERVICE_LOG_DIR}" ]; then
+    # clear it
+    rm "${DISPLAY_SERVICE_LOG_DIR}"/*
+else
+    DISPLAY_SERVICE_LOG_DIR="/tmp"
+fi
+export DISPLAY_SERVICE_LOG_DIR
+
+# background services
+pushd "${DISPLAY_SERVICE_LOG_DIR}" &>/dev/null
+command -v blueman-applet &>/dev/null && blueman-applet &>blueman-applet.log &
+command -v cbatticon &>/dev/null && cbatticon &>cbatticon.log &
+command -v steam &>/dev/null && steam -silent &>steam.log &
+popd &>/dev/null
