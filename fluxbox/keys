@@ -65,9 +65,15 @@ Mod4 S :Exec spotify-launcher
 
 # volume settings, using common keycodes
 # if these don't work, use xev to find out your real keycodes
-176 :Exec amixer sset Master,0 1+
-174 :Exec amixer sset Master,0 1-
-160 :Exec amixer sset Master,0 toggle
+123 :Exec amixer sset Master 2%+
+122 :Exec amixer sset Master 2%-
+121 :Exec amixer sset Master toggle
+# spotify controls: https://fabianlee.org/2016/05/25/ubuntu-enabling-media-keys-for-spotify/
+171 :Exec dbus-send --print-reply --dest=org.mpris.MediaPlayer2.spotify /org/mpris/MediaPlayer2 org.mpris.MediaPlayer2.Player.Next
+172 :Exec dbus-send --print-reply --dest=org.mpris.MediaPlayer2.spotify /org/mpris/MediaPlayer2 org.mpris.MediaPlayer2.Player.PlayPause
+173 :Exec dbus-send --print-reply --dest=org.mpris.MediaPlayer2.spotify /org/mpris/MediaPlayer2 org.mpris.MediaPlayer2.Player.Previous
+174 :Exec dbus-send --print-reply --dest=org.mpris.MediaPlayer2.spotify /org/mpris/MediaPlayer2 org.mpris.MediaPlayer2.Player.Stop
+
 
 # current window commands
 Mod1 F4 :Close
