@@ -80,4 +80,5 @@ symlink_overwrite "${script_dir}/kitty" "${config_home}/kitty"
 
 if [[ -n ${pc_dir} ]]; then
     symlink_overwrite "${pc_dir}/wireplumber" "${config_home}/wireplumber"
+    symlink_overwrite "${pc_dir}/xprofile.d" "${HOME}/.xprofile.d"
 fi
