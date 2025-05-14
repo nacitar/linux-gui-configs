@@ -2,7 +2,7 @@
 # this file is natively sourced by: GDM, LightDM, LXDM, SDDM
 
 # use whatever environment bash expects
-[ -r "${HOME}/.bash_profile" ] && . "${HOME}/.bash_profile"
+[[ -r ${HOME}/.bash_profile ]] && . "${HOME}/.bash_profile"
 
 # run user-specific scripts
 if [[ -d ${HOME}/.xprofile.d ]]; then
@@ -12,6 +12,9 @@ if [[ -d ${HOME}/.xprofile.d ]]; then
     unset f
 fi
 
+# if added to path, apply default output profile
+command -v ns-output-profile &>/dev/null && ns-output-profile -d
+
 # X settings
 xset s off  # disable screen blanking
 xset -dpms  # disable dpms
@@ -19,7 +22,7 @@ xset -dpms  # disable dpms
 # Setup and clear logs for startup services
 DISPLAY_SERVICE_LOG_DIR="$(realpath -q "${BASH_SOURCE[0]}")"
 DISPLAY_SERVICE_LOG_DIR="${DISPLAY_SERVICE_LOG_DIR%/*}/logs"
-if [ -d "${DISPLAY_SERVICE_LOG_DIR}" ]; then
+if [[ -d ${DISPLAY_SERVICE_LOG_DIR} ]]; then
     # clear it
     rm "${DISPLAY_SERVICE_LOG_DIR}"/*
 else

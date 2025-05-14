@@ -53,6 +53,11 @@ if [[ ! -d ${HOME} ]]; then
     error "ERROR: HOME is not defined; exiting for safety..."
 fi
 config_home=${XDG_CONFIG_HOME:-${HOME}/.config}
+home_bin=${HOME}/bin
+# create home bin if it doesn't exist
+if [[ ! -d ${home_bin} ]]; then
+    mkdir "${home_bin}"
+fi
 
 symlink_overwrite() {
     if (( ${#} != 2 )); then
@@ -77,8 +82,10 @@ done
 symlink_overwrite "${script_dir}/fluxbox" "${HOME}/.fluxbox"
 symlink_overwrite "${script_dir}/picom.conf" "${config_home}/picom.conf"
 symlink_overwrite "${script_dir}/kitty" "${config_home}/kitty"
+symlink_overwrite \
+    "${script_dir}/bin/ns-output-profile" "${home_bin}/ns-output-profile"
 
 if [[ -n ${pc_dir} ]]; then
-    symlink_overwrite "${pc_dir}/wireplumber" "${config_home}/wireplumber"
-    symlink_overwrite "${pc_dir}/xprofile.d" "${HOME}/.xprofile.d"
+    symlink_overwrite \
+        "${pc_dir}/output-profiles.json" "${HOME}/.output-profiles.json"
 fi

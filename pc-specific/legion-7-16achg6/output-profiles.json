@@ -1,0 +1,64 @@
+{
+  "default_profiles": [
+    {
+      "connected_monitors": [
+        "DP-2"
+      ],
+      "profile_name": "single"
+    }
+  ],
+  "profiles": {
+    "single": {
+      "pactl_sink_regex": ".*\\.analog-stereo",
+      "monitors": {
+        "DP-2": {
+          "layout": {
+            "resolution": {
+              "width": 1920,
+              "height": 1080
+            },
+            "position": {
+              "x": 0,
+              "y": 0
+            }
+          },
+          "primary": true,
+          "refresh_rate": "60.00"
+        }
+      }
+    },
+    "primary": {
+      "pactl_sink_regex": ".*\\.hdmi-stereo",
+      "monitors": {
+        "HDMI-0": {
+          "layout": {
+            "resolution": {
+              "width": 1920,
+              "height": 1080
+            },
+            "position": {
+              "x": 0,
+              "y": 0
+            }
+          },
+          "primary": true,
+          "refresh_rate": "60.00"
+        },
+        "DP-2": {
+          "layout": {
+            "resolution": {
+              "width": 1920,
+              "height": 1080
+            },
+            "position": {
+              "x": 1920,
+              "y": 0
+            }
+          },
+          "primary": false,
+          "refresh_rate": "60.00"
+        }
+      }
+    }
+  }
+}
