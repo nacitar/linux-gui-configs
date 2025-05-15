@@ -1,0 +1,12 @@
+#!/bin/bash
+set -eu
+script_dir=$(dirname "$(readlink -f "${BASH_SOURCE[0]:-${0}}")")
+project_dir=$(dirname "${script_dir}")/gui-utility
+venv_directory="${project_dir}/.venv"
+if [[ ! -d ${venv_directory} || ! -x ${venv_directory}/bin/python3 ]]; then
+    rm -rf "${venv_directory}"
+    poetry -C "${project_dir}" install
+fi
+source "${venv_directory}/bin/activate"
+
+exec app "${@}"

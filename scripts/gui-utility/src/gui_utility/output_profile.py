@@ -1,5 +1,3 @@
-#!/usr/bin/env python3
-
 from __future__ import annotations
 
 import argparse
@@ -7,12 +5,13 @@ import json
 import logging
 import os
 import re
-import shlex
-import subprocess
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Sequence
+
+from .cli_tool import CLITool
+from .log_utility import add_log_arguments, configure_logging
 
 logger = logging.getLogger(__name__)
 
@@ -58,28 +57,6 @@ class DisplayState:
     primary_monitor: str
 
 
-_CLI_ENV = os.environ.copy()
-_CLI_ENV["LC_ALL"] = "C"
-
-
-@dataclass
-class CLITool:
-    binary: str = "pactl"
-
-    def invoke(self, arguments: list[str]) -> str:
-        command_line = [self.binary] + arguments
-        str_command_line = " ".join(shlex.quote(arg) for arg in command_line)
-        logger.info(f"Invoking: {str_command_line}")
-        result = subprocess.run(
-            command_line, capture_output=True, text=True, env=_CLI_ENV
-        )
-        if result.returncode:
-            error = result.stderr
-            logger.error(error)
-            raise RuntimeError(error)
-        return result.stdout.strip()
-
-
 @dataclass
 class PACtl:
     tool: CLITool = field(default_factory=lambda: CLITool("pactl"))
@@ -112,7 +89,8 @@ class PACtl:
 
 
 _SCREEN_PATTERN = re.compile(
-    r"Screen (?P<name>[^:]+):.*" r" current (?P<width>\d+) x (?P<height>\d+)(,|\s|$)"
+    r"Screen (?P<name>[^:]+):.*"
+    r" current (?P<width>\d+) x (?P<height>\d+)(,|\s|$)"
 )
 _MONITOR_PATTERN = re.compile(
     r"(?P<name>[^\s]+) (?P<state>(dis)?connected)( (?P<primary>primary))?"
@@ -144,7 +122,9 @@ class XRandr:
                 if (width := match.group("width")) and (
                     height := match.group("height")
                 ):
-                    resolution = Resolution(width=int(width), height=int(height))
+                    resolution = Resolution(
+                        width=int(width), height=int(height)
+                    )
             elif match := _MONITOR_PATTERN.match(line):
                 if match.group("state") == "connected":
                     name = match.group("name")
@@ -353,7 +333,9 @@ class ProfileSelector:
                 )
                 if monitor_state.refresh_rate:
                     xrandr_cli.extend(["--rate", monitor_state.refresh_rate])
-                xrandr_cli.extend(["--pos", str(monitor_state.layout.position)])
+                xrandr_cli.extend(
+                    ["--pos", str(monitor_state.layout.position)]
+                )
                 if monitor_state.primary:
                     xrandr_cli.append("--primary")
                 any_monitor = True
@@ -367,7 +349,9 @@ class ProfileSelector:
         if profile.pactl_sink_regex:
             sink_pattern = re.compile(profile.pactl_sink_regex)
             matched_sinks = [
-                sink for sink in self.pactl.get_sinks() if sink_pattern.match(sink)
+                sink
+                for sink in self.pactl.get_sinks()
+                if sink_pattern.match(sink)
             ]
             if matched_sinks:
                 self.pactl.set_default_sink(matched_sinks[0])
@@ -376,13 +360,13 @@ class ProfileSelector:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Applies/cycles output profiles.")
+    parser = argparse.ArgumentParser(
+        description="Applies/cycles output profiles."
+    )
+    add_log_arguments(parser)
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument(
-        "-l",
-        "--list",
-        action="store_true",
-        help="Lists available profiles.",
+        "-l", "--list", action="store_true", help="Lists available profiles."
     )
     group.add_argument(
         "-d",
@@ -403,14 +387,11 @@ def main(argv: Sequence[str] | None = None) -> int:
         help="Sets the profile to the specified one.",
     )
     args = parser.parse_args(args=argv)
+    configure_logging(args)
 
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s [%(levelname)s] %(message)s",
-        datefmt="%Y-%m-%d %H:%M:%S",
+    settings = Settings.from_json(
+        Path(os.environ["HOME"]) / ".output-profiles.json"
     )
-
-    settings = Settings.from_json(Path(os.environ["HOME"]) / ".output-profiles.json")
     selector = ProfileSelector(settings)
     if args.list:
         for profile in settings.profiles:

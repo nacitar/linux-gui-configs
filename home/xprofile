@@ -13,7 +13,7 @@ if [[ -d ${HOME}/.xprofile.d ]]; then
 fi
 
 # if added to path, apply default output profile
-command -v ns-output-profile &>/dev/null && ns-output-profile -d
+command -v ns-gui-utility &>/dev/null && ns-gui-utility output-profile -d
 
 # X settings
 xset s off  # disable screen blanking

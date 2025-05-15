@@ -1,6 +1,6 @@
 #!/bin/bash
 set -eu
-script_dir=$(readlink -f "$(dirname "${BASH_SOURCE[0]:-${0}}")")
+script_dir=$(dirname "$(readlink -f "${BASH_SOURCE[0]:-${0}}")")
 show_usage() {
     >&2 cat << EOF
 Usage: $(basename "${0}") OPTIONS
@@ -82,10 +82,18 @@ done
 symlink_overwrite "${script_dir}/fluxbox" "${HOME}/.fluxbox"
 symlink_overwrite "${script_dir}/picom.conf" "${config_home}/picom.conf"
 symlink_overwrite "${script_dir}/kitty" "${config_home}/kitty"
-symlink_overwrite \
-    "${script_dir}/bin/ns-output-profile" "${home_bin}/ns-output-profile"
-
 if [[ -n ${pc_dir} ]]; then
     symlink_overwrite \
         "${pc_dir}/output-profiles.json" "${HOME}/.output-profiles.json"
+fi
+
+bashrc_d_dir="${HOME}/.bashrc.d"
+if [[ -d ${bashrc_d_dir} ]]; then
+    symlink_overwrite \
+        "${script_dir}/scripts/ns-gui-configs-bin-path.sh" \
+        "${bashrc_d_dir}/ns-gui-configs-bin-path.sh"
+else
+    error \
+        "No ${bashrc_d_dir} present; tools not added to PATH!" \
+        "Expected to be used with a .bashrc that sources from that."
 fi
