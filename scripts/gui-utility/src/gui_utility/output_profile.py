@@ -302,17 +302,26 @@ class ProfileSelector:
         logger.info(f"current profile determined: {match}")
         return match
 
-    def next_profile(self, name: str = "") -> str:
+    def next_valid_profile(self, name: str = "") -> str:
         if not name:
             name = self.get_current_profile()
-            if not name:
-                return ""
         logger.debug("determining next profile...")
         profile_names = list(self.settings.profiles.keys())
-        next_index = (profile_names.index(name) + 1) % len(profile_names)
-        next_profile = profile_names[next_index]
-        logger.info(f"next profile determined: {next_profile}")
-        return next_profile
+        if name:
+            # the order of profiles to check, ignoring the passed one
+            index = profile_names.index(name)
+            profile_list = profile_names[index + 1 :] + profile_names[:index]
+        else:
+            # all profiles
+            profile_list = profile_names
+        connected_monitors = set(self.state.connected_monitors)
+        for next_profile in profile_list:
+            profile = self.settings.profiles[next_profile]
+            if set(profile.monitors.keys()) <= connected_monitors:
+                logger.info(f"next valid profile determined: {next_profile}")
+                return next_profile
+        logger.warning("no valid next profile could be determined.")
+        return ""
 
     def apply_profile(self, name: str) -> None:
         logger.info(f"applying profile: {name}")
@@ -390,7 +399,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     configure_logging(args)
 
     settings = Settings.from_json(
-        Path(os.environ["HOME"]) / ".output-profiles.json"
+        Path(os.environ["HOME"]) / ".ns-output-profiles.json"
     )
     selector = ProfileSelector(settings)
     if args.list:
@@ -400,7 +409,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         if args.default:
             next_profile = selector.get_default_profile()
         elif args.cycle:
-            next_profile = selector.next_profile()
+            next_profile = selector.next_valid_profile()
         elif args.profile:
             next_profile = args.profile
 

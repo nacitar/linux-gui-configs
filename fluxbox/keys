@@ -65,17 +65,18 @@ Mod4 S :Exec spotify-launcher
 # cycle between profiles
 Mod4 minus :Exec ns-gui-utility output-profile -c
 
-# volume settings, using common keycodes
-# if these don't work, use xev to find out your real keycodes
+# volume settings; can use xev to find keycodes if it doesn't work
 123 :Exec amixer sset Master 2%+
 122 :Exec amixer sset Master 2%-
 121 :Exec amixer sset Master toggle
-# spotify controls: https://fabianlee.org/2016/05/25/ubuntu-enabling-media-keys-for-spotify/
-171 :Exec dbus-send --print-reply --dest=org.mpris.MediaPlayer2.spotify /org/mpris/MediaPlayer2 org.mpris.MediaPlayer2.Player.Next
-172 :Exec dbus-send --print-reply --dest=org.mpris.MediaPlayer2.spotify /org/mpris/MediaPlayer2 org.mpris.MediaPlayer2.Player.PlayPause
-173 :Exec dbus-send --print-reply --dest=org.mpris.MediaPlayer2.spotify /org/mpris/MediaPlayer2 org.mpris.MediaPlayer2.Player.Previous
-174 :Exec dbus-send --print-reply --dest=org.mpris.MediaPlayer2.spotify /org/mpris/MediaPlayer2 org.mpris.MediaPlayer2.Player.Stop
-
+Mod1 123 :Exec ns-gui-utility spotify-control --volume-adjust 2
+Mod1 122 :Exec ns-gui-utility spotify-control --volume-adjust -2
+# no mute command exists
+#Mod1 121 :Exec ns-gui-utility spotify-control --mute-toggle
+171 :Exec ns-gui-utility spotify-control --next
+172 :Exec ns-gui-utility spotify-control --play-toggle
+173 :Exec ns-gui-utility spotify-control --previous
+174 :Exec ns-gui-utility spotify-control --stop
 
 # current window commands
 Mod1 F4 :Close

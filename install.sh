@@ -84,16 +84,16 @@ symlink_overwrite "${script_dir}/picom.conf" "${config_home}/picom.conf"
 symlink_overwrite "${script_dir}/kitty" "${config_home}/kitty"
 if [[ -n ${pc_dir} ]]; then
     symlink_overwrite \
-        "${pc_dir}/output-profiles.json" "${HOME}/.output-profiles.json"
+        "${pc_dir}/output-profiles.json" "${HOME}/.ns-output-profiles.json"
 fi
 
-bashrc_d_dir="${HOME}/.bashrc.d"
-if [[ -d ${bashrc_d_dir} ]]; then
+path_d_dir="${HOME}/.integration/path.d"
+if [[ -d ${path_d_dir} ]]; then
     symlink_overwrite \
-        "${script_dir}/scripts/ns-gui-configs-bin-path.sh" \
-        "${bashrc_d_dir}/ns-gui-configs-bin-path.sh"
+        "${script_dir}/scripts/bin" \
+        "${path_d_dir}/ns-gui-configs-bin"
 else
     error \
-        "No ${bashrc_d_dir} present; tools not added to PATH!" \
-        "Expected to be used with a .bashrc that sources from that."
+        "No ${path_d_dir} present; tools not added to PATH!  Expected to be" \
+        "used with a .bashrc that adds path.d subdirectories to PATH."
 fi
