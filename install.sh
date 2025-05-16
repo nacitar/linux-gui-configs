@@ -73,7 +73,7 @@ symlink_overwrite() {
 }
 
 for filename in Xresources xinitrc xprofile xsettingsd; do
-    symlink_overwrite "${script_dir}/home/${filename}" "${HOME}/.${filename}"
+    symlink_overwrite "${script_dir}/${filename}" "${HOME}/.${filename}"
 done
 
 symlink_overwrite "${script_dir}/fluxbox" "${HOME}/.fluxbox"

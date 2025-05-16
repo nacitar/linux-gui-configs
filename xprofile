@@ -20,8 +20,8 @@ xset s off  # disable screen blanking
 xset -dpms  # disable dpms
 
 # Setup and clear logs for startup services
-DISPLAY_SERVICE_LOG_DIR="$(realpath -q "${BASH_SOURCE[0]}")"
-DISPLAY_SERVICE_LOG_DIR="${DISPLAY_SERVICE_LOG_DIR%/*}/logs"
+DISPLAY_SERVICE_LOG_DIR=$(realpath -q "${BASH_SOURCE[0]}")
+DISPLAY_SERVICE_LOG_DIR=${DISPLAY_SERVICE_LOG_DIR%/*}/logs
 if [[ -d ${DISPLAY_SERVICE_LOG_DIR} ]]; then
     # clear it
     rm "${DISPLAY_SERVICE_LOG_DIR}"/*
@@ -32,6 +32,7 @@ export DISPLAY_SERVICE_LOG_DIR
 
 # background services
 pushd "${DISPLAY_SERVICE_LOG_DIR}" &>/dev/null
+env >xenv
 command -v blueman-applet &>/dev/null && blueman-applet &>blueman-applet.log &
 command -v cbatticon &>/dev/null && cbatticon &>cbatticon.log &
 command -v steam &>/dev/null && steam -silent &>steam.log &
