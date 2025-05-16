@@ -1,0 +1,9 @@
+#!/bin/bash
+set -eu
+profile=${1:-}
+echo "Output profile changed: ${profile}"
+echo "Applying wallpaper..."
+pushd "${HOME}/Pictures/wallpaper/gucken" &>/dev/null
+# can pass more images for additional monitors w/ different wallpaper
+feh --bg-scale Starry_Night_by_gucken_1920x1080.png
+popd &>/dev/null

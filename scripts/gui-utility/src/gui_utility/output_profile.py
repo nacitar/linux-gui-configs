@@ -6,8 +6,9 @@ import logging
 import os
 import re
 import sys
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
+from time import sleep
 from typing import Any, Sequence
 
 from .cli_tool import CLITool
@@ -150,7 +151,7 @@ class XRandr:
 
 @dataclass
 class DefaultProfile:
-    connected_monitors: set[str]
+    connected_monitors: list[str]
     profile_name: str
 
 
@@ -172,84 +173,69 @@ class Settings:
     default_profiles: list[DefaultProfile]
     profiles: dict[str, Profile]
 
-    def to_dict(self) -> dict[str, Any]:
-        return {
-            "default_profiles": [
-                {
-                    "connected_monitors": list(p.connected_monitors),
-                    "profile_name": p.profile_name,
-                }
-                for p in self.default_profiles
-            ],
-            "profiles": {
-                name: {
-                    "pactl_sink_regex": profile.pactl_sink_regex,
-                    "monitors": {
-                        mon_name: {
-                            "layout": {
-                                "resolution": {
-                                    "width": m.layout.resolution.width,
-                                    "height": m.layout.resolution.height,
-                                },
-                                "position": {
-                                    "x": m.layout.position.x,
-                                    "y": m.layout.position.y,
-                                },
-                            },
-                            "primary": m.primary,
-                            "refresh_rate": m.refresh_rate,
-                        }
-                        for mon_name, m in profile.monitors.items()
-                    },
-                }
-                for name, profile in self.profiles.items()
-            },
-        }
-
     @classmethod
-    def from_dict(cls, d: dict[str, Any]) -> Settings:
-        default_profiles = [
-            DefaultProfile(
-                connected_monitors=set(p["connected_monitors"]),
-                profile_name=p["profile_name"],
-            )
-            for p in d.get("default_profiles", [])
-        ]
-
-        profiles = {
-            name: Profile(
-                pactl_sink_regex=p["pactl_sink_regex"],
-                monitors={
-                    mon_name: MonitorState(
-                        layout=Layout(
-                            resolution=Resolution(
-                                width=m["layout"]["resolution"]["width"],
-                                height=m["layout"]["resolution"]["height"],
+    def from_dict(cls, data: dict[str, Any]) -> Settings:
+        return cls(
+            default_profiles=[
+                DefaultProfile(**default_profile)
+                for default_profile in data.get("default_profiles", [])
+            ],
+            profiles={
+                name: Profile(
+                    pactl_sink_regex=profile["pactl_sink_regex"],
+                    monitors={
+                        output_name: MonitorState(
+                            layout=Layout(
+                                resolution=Resolution(
+                                    **monitor_state["layout"]["resolution"]
+                                ),
+                                position=Coordinate(
+                                    **monitor_state["layout"]["position"]
+                                ),
                             ),
-                            position=Coordinate(
-                                x=m["layout"]["position"]["x"],
-                                y=m["layout"]["position"]["y"],
-                            ),
-                        ),
-                        primary=m["primary"],
-                        refresh_rate=m["refresh_rate"],
-                    )
-                    for mon_name, m in p["monitors"].items()
-                },
-            )
-            for name, p in d.get("profiles", {}).items()
-        }
+                            primary=monitor_state["primary"],
+                            refresh_rate=monitor_state["refresh_rate"],
+                        )
+                        for output_name, monitor_state in profile[
+                            "monitors"
+                        ].items()
+                    },
+                )
+                for name, profile in data.get("profiles", {}).items()
+            },
+        )
 
-        return cls(default_profiles=default_profiles, profiles=profiles)
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
 
     def to_json(self, path: Path) -> None:
-        with open(path, "w") as f:
-            json.dump(self.to_dict(), f, indent=2)
+        with open(path, "w") as handle:
+            json.dump(self.to_dict(), handle, indent=4)
 
     @classmethod
     def from_json(cls, path: Path) -> Settings:
-        with open(path) as f:
-            return cls.from_dict(json.load(f))
+        with open(path) as handle:
+            return cls.from_dict(json.load(handle))
+
+
+def gui_config_dir() -> Path:
+    config_home = os.environ.get("XDG_CONFIG_HOME", "")
+    if not config_home:
+        config_home = f"{os.environ['HOME']}/.config"
+    return Path(config_home) / "ns-gui-utility"
+
+
+@dataclass
+class XProp:
+    tool: CLITool = field(default_factory=lambda: CLITool("xprop"))
+
+    def root_pixmap_id(self) -> int:
+        output = self.tool.invoke(["-root", "-notype", "_XROOTPMAP_ID"])
+        index = output.find("0x")
+        if index == -1:
+            logger.error("Couldn't retrieve root pixmap id!")
+            return -1
+        return int(output[index + 2 :], 16)
 
 
 @dataclass
@@ -257,15 +243,20 @@ class ProfileSelector:
     settings: Settings
     pactl: PACtl = field(default_factory=lambda: PACtl())
     xrandr: XRandr = field(default_factory=lambda: XRandr())
+    xprop: XProp = field(default_factory=lambda: XProp())
     state: DisplayState = field(init=False)
+    current_profile: str = field(init=False)
+    default_profile: str = field(init=False)
 
     def __post_init__(self) -> None:
         self.update_state()
 
     def update_state(self) -> None:
         self.state = self.xrandr.state()
+        self.current_profile = self._get_current_profile()
+        self.default_profile = self._get_default_profile()
 
-    def get_default_profile(self) -> str:
+    def _get_default_profile(self) -> str:
         logger.debug("determining default profile...")
         connected_monitors = set(self.state.connected_monitors)
 
@@ -273,7 +264,8 @@ class ProfileSelector:
             (
                 default_profile.profile_name
                 for default_profile in self.settings.default_profiles
-                if default_profile.connected_monitors <= connected_monitors
+                if set(default_profile.connected_monitors)
+                <= connected_monitors
             ),
             key=len,
             default=None,
@@ -284,7 +276,7 @@ class ProfileSelector:
         logger.info(f"default profile determined: {best_match}")
         return best_match
 
-    def get_current_profile(self) -> str:
+    def _get_current_profile(self) -> str:
         logger.debug("determining current profile...")
         active_monitors = set(self.state.active_monitors)
         match = max(
@@ -304,7 +296,7 @@ class ProfileSelector:
 
     def next_valid_profile(self, name: str = "") -> str:
         if not name:
-            name = self.get_current_profile()
+            name = self.current_profile
         logger.debug("determining next profile...")
         profile_names = list(self.settings.profiles.keys())
         if name:
@@ -324,6 +316,9 @@ class ProfileSelector:
         return ""
 
     def apply_profile(self, name: str) -> None:
+        if self.current_profile == name:
+            logger.warning(f"not reapplying current profile: {name}")
+            return
         logger.info(f"applying profile: {name}")
         profile = self.settings.profiles[name]
         xrandr_cli: list[str] = []
@@ -352,6 +347,8 @@ class ProfileSelector:
                 xrandr_cli.extend(["--output", monitor, "--off"])
         if not any_monitor:
             raise AssertionError("no monitor would have been enabled!")
+
+        old_root_pixmap_id = self.xprop.root_pixmap_id()
         logger.info("invoking xrandr...")
         self.xrandr.invoke(xrandr_cli)
 
@@ -366,6 +363,22 @@ class ProfileSelector:
                 self.pactl.set_default_sink(matched_sinks[0])
             else:
                 logger.warn(f"no sink matched: {profile.pactl_sink_regex}")
+
+        on_output_change = gui_config_dir() / "on-output-change"
+        if on_output_change.exists():
+            delay_ms = 100
+            remaining_ms = 5000
+            while remaining_ms > 0:
+                if self.xprop.root_pixmap_id() != old_root_pixmap_id:
+                    logger.info("new root pixmap detected")
+                    break
+                logger.debug(f"waiting {delay_ms}ms for new root pixmap...")
+                sleep(delay_ms / 1000)
+                remaining_ms -= delay_ms
+            if remaining_ms <= 0:
+                logger.error("no new root pixmap within timeout.")
+
+            print(CLITool(binary=str(on_output_change)).invoke([name]))
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -395,19 +408,26 @@ def main(argv: Sequence[str] | None = None) -> int:
         type=str,
         help="Sets the profile to the specified one.",
     )
+    group.add_argument(
+        "-g",
+        "--get-current-profile",
+        action="store_true",
+        help="Gets the current profile.",
+    )
     args = parser.parse_args(args=argv)
     configure_logging(args)
 
-    settings = Settings.from_json(
-        Path(os.environ["HOME"]) / ".ns-output-profiles.json"
-    )
+    settings = Settings.from_json(gui_config_dir() / "output-profiles.json")
     selector = ProfileSelector(settings)
+
     if args.list:
         for profile in settings.profiles:
             print(profile)
+    elif args.get_current_profile:
+        print(selector.current_profile)
     else:
         if args.default:
-            next_profile = selector.get_default_profile()
+            next_profile = selector.default_profile
         elif args.cycle:
             next_profile = selector.next_valid_profile()
         elif args.profile:

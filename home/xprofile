@@ -12,7 +12,7 @@ if [[ -d ${HOME}/.xprofile.d ]]; then
     unset f
 fi
 
-# if added to path, apply default output profile
+# apply default output profile (and wallpaper)
 command -v ns-gui-utility &>/dev/null && ns-gui-utility output-profile -d
 
 # X settings

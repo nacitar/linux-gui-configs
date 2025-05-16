@@ -53,11 +53,8 @@ if [[ ! -d ${HOME} ]]; then
     error "ERROR: HOME is not defined; exiting for safety..."
 fi
 config_home=${XDG_CONFIG_HOME:-${HOME}/.config}
-home_bin=${HOME}/bin
-# create home bin if it doesn't exist
-if [[ ! -d ${home_bin} ]]; then
-    mkdir "${home_bin}"
-fi
+gui_config_dir=${config_home}/ns-gui-utility
+mkdir -p "${gui_config_dir}"
 
 symlink_overwrite() {
     if (( ${#} != 2 )); then
@@ -84,7 +81,11 @@ symlink_overwrite "${script_dir}/picom.conf" "${config_home}/picom.conf"
 symlink_overwrite "${script_dir}/kitty" "${config_home}/kitty"
 if [[ -n ${pc_dir} ]]; then
     symlink_overwrite \
-        "${pc_dir}/output-profiles.json" "${HOME}/.ns-output-profiles.json"
+        "${pc_dir}/output-profiles.json" \
+        "${gui_config_dir}/output-profiles.json"
+    symlink_overwrite \
+        "${pc_dir}/on-output-change" \
+        "${gui_config_dir}/on-output-change"
 fi
 
 path_d_dir="${HOME}/.integration/path.d"

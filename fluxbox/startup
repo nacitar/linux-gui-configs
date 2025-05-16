@@ -10,9 +10,8 @@ systemctl --user start xdg-desktop-portal.service
 systemctl --user start xsettingsd.service
 pushd "${DISPLAY_SERVICE_LOG_DIR:-/tmp}" &>/dev/null
 env > xenv
-# remove any previously set wallpaper; nitrogen will cover it.
+# remove any previously set wallpaper; this is handled elsewhere (.xprofile)
 rm -f "${HOME}/.fluxbox/lastwallpaper"
-command -v nitrogen &>/dev/null && nitrogen --restore &>nitrogen.log
 # background services
 command -v picom &>/dev/null && picom &>picom.log &
 command -v dunst &>/dev/null && dunst &>dunst.log &
