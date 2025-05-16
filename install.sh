@@ -84,8 +84,8 @@ if [[ -n ${pc_dir} ]]; then
         "${pc_dir}/output-profiles.json" \
         "${gui_config_dir}/output-profiles.json"
     symlink_overwrite \
-        "${pc_dir}/on-output-change" \
-        "${gui_config_dir}/on-output-change"
+        "${pc_dir}/on-output-profile-change" \
+        "${gui_config_dir}/on-output-profile-change"
 fi
 
 path_d_dir="${HOME}/.integration/path.d"

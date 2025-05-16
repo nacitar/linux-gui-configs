@@ -229,13 +229,10 @@ def gui_config_dir() -> Path:
 class XProp:
     tool: CLITool = field(default_factory=lambda: CLITool("xprop"))
 
-    def root_pixmap_id(self) -> int:
-        output = self.tool.invoke(["-root", "-notype", "_XROOTPMAP_ID"])
-        index = output.find("0x")
-        if index == -1:
-            logger.error("Couldn't retrieve root pixmap id!")
-            return -1
-        return int(output[index + 2 :], 16)
+    def root_window_id(self) -> str:
+        return self.tool.invoke(
+            ["-root", "-notype", "_NET_WORKAREA", "_XROOTPMAP_ID"]
+        )
 
 
 @dataclass
@@ -348,7 +345,7 @@ class ProfileSelector:
         if not any_monitor:
             raise AssertionError("no monitor would have been enabled!")
 
-        old_root_pixmap_id = self.xprop.root_pixmap_id()
+        old_root_window_id = self.xprop.root_window_id()
         logger.info("invoking xrandr...")
         self.xrandr.invoke(xrandr_cli)
 
@@ -364,21 +361,21 @@ class ProfileSelector:
             else:
                 logger.warn(f"no sink matched: {profile.pactl_sink_regex}")
 
-        on_output_change = gui_config_dir() / "on-output-change"
-        if on_output_change.exists():
+        on_change = gui_config_dir() / "on-output-profile-change"
+        if on_change.exists():
             delay_ms = 100
             remaining_ms = 5000
             while remaining_ms > 0:
-                if self.xprop.root_pixmap_id() != old_root_pixmap_id:
+                if self.xprop.root_window_id() != old_root_window_id:
                     logger.info("new root pixmap detected")
                     break
-                logger.debug(f"waiting {delay_ms}ms for new root pixmap...")
+                logger.debug(f"waiting {delay_ms}ms for new root window...")
                 sleep(delay_ms / 1000)
                 remaining_ms -= delay_ms
             if remaining_ms <= 0:
                 logger.error("no new root pixmap within timeout.")
 
-            print(CLITool(binary=str(on_output_change)).invoke([name]))
+            print(CLITool(binary=str(on_change)).invoke([name]))
 
 
 def main(argv: Sequence[str] | None = None) -> int:
