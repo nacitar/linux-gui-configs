@@ -325,29 +325,36 @@ def main(argv: Sequence[str] | None = None) -> int:
         action="store_true",
         help="Gets the current profile.",
     )
+    group.add_argument(
+        "--primary-resolution",
+        action="store_true",
+        help="Gets the primary output's resolution."
+    )
     args = parser.parse_args(args=argv)
     configure_logging(args)
 
-    settings = Settings.from_json(gui_config_dir() / "output-profiles.json")
-    selector = ProfileSelector(settings)
-
-    if args.list:
-        for profile in settings.profiles:
-            print(profile)
-    elif args.get_current_profile:
-        print(selector.current_profile)
+    if args.primary_resolution:
+        print(XRandr().state().primary_output.configuration.mode.resolution)
     else:
-        if args.default:
-            next_profile = selector.default_profile
-        elif args.cycle:
-            next_profile = selector.next_valid_profile()
-        elif args.profile:
-            next_profile = args.profile
-
-        if next_profile:
-            selector.apply_profile(next_profile)
+        settings = Settings.from_json(gui_config_dir() / "output-profiles.json")
+        selector = ProfileSelector(settings)
+        if args.list:
+            for profile in settings.profiles:
+                print(profile)
+        elif args.get_current_profile:
+            print(selector.current_profile)
         else:
-            return 1
+            if args.default:
+                next_profile = selector.default_profile
+            elif args.cycle:
+                next_profile = selector.next_valid_profile()
+            elif args.profile:
+                next_profile = args.profile
+
+            if next_profile:
+                selector.apply_profile(next_profile)
+            else:
+                return 1
     return 0
 
 

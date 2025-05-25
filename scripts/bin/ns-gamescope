@@ -1,0 +1,68 @@
+#!/bin/bash
+set -eu
+script_path=$(readlink -f "${BASH_SOURCE[0]:-${0}}")
+script_dir=$(dirname "${script_path}")
+script_name=$(basename "${script_path}")
+output-profile() {
+    "${script_dir}/ns-gui-utility" output-profile "${@}"
+}
+notification() {
+    local type=${1,,}
+    local message=${2}
+    local timeout=5000
+    busctl --user \
+        call org.freedesktop.Notifications \
+        /org/freedesktop/Notifications \
+        org.freedesktop.Notifications \
+        Notify \
+        "susssasa{sv}i" \
+        "${script_name}" \
+        0 \
+        "dialog-${type}" \
+        "${type^^}" \
+        "${script_name}: ${message}" \
+        0 \
+        0 \
+        "${timeout}" \
+        &>/dev/null
+    if [[ "${type}" == "error" || "${type}" == "warning" ]]; then
+        >&2 echo "${type^^}: ${message}"
+    else
+        echo "${type^^}: ${message}"
+    fi
+}
+info() {
+    notification info "${@}"
+}
+warning() {
+    notification warning "${@}"
+}
+error() {
+    notification error "${@}"
+}
+
+resolution=$(output-profile --primary-resolution)
+resolution=${resolution:-1920x1080}
+
+gamescope_binary=$(which gamescope 2>/dev/null)
+if [[ ! -x "${gamescope_binary}" ]]; then
+    error "gamescope is not installed, cannot launch games."
+    exit 1
+fi
+cap_str="cap_sys_nice=ep"
+gamescope_caps=$(getcap -v "${gamescope_binary}")
+if [[ -z "${gamescope_caps}" ]]; then
+    warning "could not verify ${cap_str}: getcap -v \"${gamescope_binary}\""
+elif ! grep -q "${cap_str}" <<< "${gamescope_caps}"; then
+    warning "$(printf '%s\n' \
+        "missing ${cap_str}, --rt won't work for: ${gamescope_binary}" \
+        "run: sudo setcap ${cap_str} \"${gamescope_binary}\"" \
+    )"
+fi
+
+exec gamescope \
+    --rt \
+    -f --force-grab-cursor \
+    -W "${resolution%%x*}" \
+    -H "${resolution##*x}" \
+    "${@}"
