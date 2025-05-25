@@ -1,7 +1,7 @@
 {
   "default_profiles": [
     {
-      "connected_monitors": [
+      "connected_output_names": [
         "DP-2"
       ],
       "profile_name": "single"
@@ -10,53 +10,59 @@
   "profiles": {
     "single": {
       "pactl_sink_regex": ".*\\.analog-stereo",
-      "monitors": {
+      "outputs": {
         "DP-2": {
-          "layout": {
-            "resolution": {
-              "width": 1920,
-              "height": 1080
+          "configuration": {
+            "mode": {
+              "resolution": {
+                "width": 1920,
+                "height": 1080
+              },
+              "refresh_rate": "60.00"
             },
             "position": {
               "x": 0,
               "y": 0
             }
           },
-          "primary": true,
-          "refresh_rate": "60.00"
+          "primary": true
         }
       }
     },
     "primary": {
       "pactl_sink_regex": ".*\\.hdmi-stereo",
-      "monitors": {
+      "outputs": {
         "HDMI-0": {
-          "layout": {
-            "resolution": {
-              "width": 1920,
-              "height": 1080
+          "configuration": {
+            "mode": {
+              "resolution": {
+                "width": 1920,
+                "height": 1080
+              },
+              "refresh_rate": "60.00"
             },
             "position": {
               "x": 0,
               "y": 0
             }
           },
-          "primary": true,
-          "refresh_rate": "60.00"
+          "primary": true
         },
         "DP-2": {
-          "layout": {
-            "resolution": {
-              "width": 1920,
-              "height": 1080
+          "configuration": {
+            "mode": {
+              "resolution": {
+                "width": 1920,
+                "height": 1080
+              },
+              "refresh_rate": "60.00"
             },
             "position": {
               "x": 1920,
               "y": 0
             }
           },
-          "primary": false,
-          "refresh_rate": "60.00"
+          "primary": false
         }
       }
     }

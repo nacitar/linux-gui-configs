@@ -7,55 +7,16 @@ import os
 import re
 import sys
 from dataclasses import asdict, dataclass, field
+from decimal import Decimal
 from pathlib import Path
 from time import sleep
 from typing import Any, Sequence
 
 from .cli_tool import CLITool
 from .log_utility import add_log_arguments, configure_logging
+from .xrandr import Configuration, Mode, Position, Resolution, Screen, XRandr
 
 logger = logging.getLogger(__name__)
-
-
-@dataclass
-class Resolution:
-    width: int
-    height: int
-
-    def __bool__(self) -> bool:
-        return self.width != 0 and self.height != 0
-
-    def __str__(self) -> str:
-        return f"{self.width}x{self.height}"
-
-
-@dataclass
-class Coordinate:
-    x: int
-    y: int
-
-    def __str__(self) -> str:
-        return f"{self.x}x{self.y}"
-
-
-@dataclass
-class Layout:
-    resolution: Resolution = field(
-        default_factory=lambda: Resolution(width=0, height=0)
-    )
-    position: Coordinate = field(default_factory=lambda: Coordinate(x=0, y=0))
-
-    def __bool__(self) -> bool:
-        return bool(self.resolution)
-
-
-@dataclass
-class DisplayState:
-    name: str
-    resolution: Resolution
-    connected_monitors: list[str]
-    active_monitors: list[str]
-    primary_monitor: str
 
 
 @dataclass
@@ -89,83 +50,22 @@ class PACtl:
         self.set_default_sink(next_sink)
 
 
-_SCREEN_PATTERN = re.compile(
-    r"Screen (?P<name>[^:]+):.*"
-    r" current (?P<width>\d+) x (?P<height>\d+)(,|\s|$)"
-)
-_MONITOR_PATTERN = re.compile(
-    r"(?P<name>[^\s]+) (?P<state>(dis)?connected)( (?P<primary>primary))?"
-    r"( (?P<width>\d+)x(?P<height>\d+)\+(?P<x>\d+)\+(?P<y>\d+))?"
-    r"(\s|$).*"
-)
-
-
-@dataclass
-class XRandr:
-    tool: CLITool = field(default_factory=lambda: CLITool("xrandr"))
-
-    def invoke(self, arguments: list[str]) -> str:
-        return self.tool.invoke(arguments)
-
-    def state(self) -> DisplayState:
-        display_name = ""
-        resolution: Resolution | None = None
-        connected_monitors: list[str] = []
-        active_monitors: list[str] = []
-        primary_monitor: str = ""
-        for line in self.tool.invoke(["--query"]).splitlines():
-            if line.startswith(" "):
-                continue
-            if match := _SCREEN_PATTERN.match(line):
-                if display_name:
-                    raise AssertionError("multiple screens!")
-                display_name = match.group("name")
-                if (width := match.group("width")) and (
-                    height := match.group("height")
-                ):
-                    resolution = Resolution(
-                        width=int(width), height=int(height)
-                    )
-            elif match := _MONITOR_PATTERN.match(line):
-                if match.group("state") == "connected":
-                    name = match.group("name")
-                    connected_monitors.append(name)
-                    if match.group("primary"):
-                        if primary_monitor:
-                            raise AssertionError("multiple primary monitors.")
-                        primary_monitor = name
-                    if match.group("width"):
-                        active_monitors.append(name)
-        if not display_name or not resolution:
-            raise AssertionError("display (virtual screen) missing fields.")
-        if not primary_monitor and active_monitors:
-            primary_monitor = active_monitors[0]
-        return DisplayState(
-            name=display_name,
-            resolution=resolution,
-            connected_monitors=connected_monitors,
-            active_monitors=active_monitors,
-            primary_monitor=primary_monitor,
-        )
-
-
 @dataclass
 class DefaultProfile:
-    connected_monitors: list[str]
+    connected_output_names: list[str]
     profile_name: str
 
 
 @dataclass
-class MonitorState:
-    layout: Layout
+class OutputState:
+    configuration: Configuration
     primary: bool
-    refresh_rate: str
 
 
 @dataclass
 class Profile:
     pactl_sink_regex: str
-    monitors: dict[str, MonitorState]
+    outputs: dict[str, OutputState]
 
 
 @dataclass
@@ -183,21 +83,29 @@ class Settings:
             profiles={
                 name: Profile(
                     pactl_sink_regex=profile["pactl_sink_regex"],
-                    monitors={
-                        output_name: MonitorState(
-                            layout=Layout(
-                                resolution=Resolution(
-                                    **monitor_state["layout"]["resolution"]
+                    outputs={
+                        output_name: OutputState(
+                            configuration=Configuration(
+                                mode=Mode(
+                                    resolution=Resolution(
+                                        **output_state["configuration"][
+                                            "mode"
+                                        ]["resolution"]
+                                    ),
+                                    refresh_rate=Decimal(
+                                        output_state["configuration"]["mode"][
+                                            "refresh_rate"
+                                        ]
+                                    ),
                                 ),
-                                position=Coordinate(
-                                    **monitor_state["layout"]["position"]
+                                position=Position(
+                                    **output_state["configuration"]["position"]
                                 ),
                             ),
-                            primary=monitor_state["primary"],
-                            refresh_rate=monitor_state["refresh_rate"],
+                            primary=bool(output_state["primary"]),
                         )
-                        for output_name, monitor_state in profile[
-                            "monitors"
+                        for output_name, output_state in profile[
+                            "outputs"
                         ].items()
                     },
                 )
@@ -241,7 +149,7 @@ class ProfileSelector:
     pactl: PACtl = field(default_factory=lambda: PACtl())
     xrandr: XRandr = field(default_factory=lambda: XRandr())
     xprop: XProp = field(default_factory=lambda: XProp())
-    state: DisplayState = field(init=False)
+    state: Screen = field(init=False)
     current_profile: str = field(init=False)
     default_profile: str = field(init=False)
 
@@ -255,14 +163,14 @@ class ProfileSelector:
 
     def _get_default_profile(self) -> str:
         logger.debug("determining default profile...")
-        connected_monitors = set(self.state.connected_monitors)
+        connected_output_names = set(self.state.connected_output_names)
 
         best_match = max(
             (
                 default_profile.profile_name
                 for default_profile in self.settings.default_profiles
-                if set(default_profile.connected_monitors)
-                <= connected_monitors
+                if set(default_profile.connected_output_names)
+                <= connected_output_names
             ),
             key=len,
             default=None,
@@ -275,12 +183,13 @@ class ProfileSelector:
 
     def _get_current_profile(self) -> str:
         logger.debug("determining current profile...")
-        active_monitors = set(self.state.active_monitors)
+        active_output_names = set(self.state.active_output_names)
+        # TODO: don't just match by outputs, but also by resolution
         match = max(
             (
                 name
                 for name, profile in self.settings.profiles.items()
-                if set(profile.monitors.keys()) == active_monitors
+                if set(profile.outputs.keys()) == active_output_names
             ),
             key=len,
             default=None,
@@ -303,10 +212,10 @@ class ProfileSelector:
         else:
             # all profiles
             profile_list = profile_names
-        connected_monitors = set(self.state.connected_monitors)
+        connected_output_names = set(self.state.connected_output_names)
         for next_profile in profile_list:
             profile = self.settings.profiles[next_profile]
-            if set(profile.monitors.keys()) <= connected_monitors:
+            if set(profile.outputs.keys()) <= connected_output_names:
                 logger.info(f"next valid profile determined: {next_profile}")
                 return next_profile
         logger.warning("no valid next profile could be determined.")
@@ -320,30 +229,35 @@ class ProfileSelector:
         profile = self.settings.profiles[name]
         xrandr_cli: list[str] = []
 
-        any_monitor = False
-        for monitor in self.state.connected_monitors:
-            if monitor in profile.monitors:
-                monitor_state = profile.monitors[monitor]
+        any_output = False
+        for output in self.state.connected_output_names:
+            if output in profile.outputs:
+                output_state = profile.outputs[output]
                 xrandr_cli.extend(
                     [
                         "--output",
-                        monitor,
+                        output,
                         "--mode",
-                        str(monitor_state.layout.resolution),
+                        str(output_state.configuration.mode.resolution),
                     ]
                 )
-                if monitor_state.refresh_rate:
-                    xrandr_cli.extend(["--rate", monitor_state.refresh_rate])
+                if output_state.configuration.mode.refresh_rate:
+                    xrandr_cli.extend(
+                        [
+                            "--rate",
+                            str(output_state.configuration.mode.refresh_rate),
+                        ]
+                    )
                 xrandr_cli.extend(
-                    ["--pos", str(monitor_state.layout.position)]
+                    ["--pos", output_state.configuration.position.to_cli_str()]
                 )
-                if monitor_state.primary:
+                if output_state.primary:
                     xrandr_cli.append("--primary")
-                any_monitor = True
+                any_output = True
             else:
-                xrandr_cli.extend(["--output", monitor, "--off"])
-        if not any_monitor:
-            raise AssertionError("no monitor would have been enabled!")
+                xrandr_cli.extend(["--output", output, "--off"])
+        if not any_output:
+            raise AssertionError("no output would have been enabled!")
 
         old_root_window_id = self.xprop.root_window_id()
         logger.info("invoking xrandr...")
@@ -367,7 +281,7 @@ class ProfileSelector:
             remaining_ms = 5000
             while remaining_ms > 0:
                 if self.xprop.root_window_id() != old_root_window_id:
-                    logger.info("new root pixmap detected")
+                    logger.info("new root window id detected")
                     break
                 logger.debug(f"waiting {delay_ms}ms for new root window...")
                 sleep(delay_ms / 1000)
@@ -391,7 +305,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         "-d",
         "--default",
         action="store_true",
-        help="Apply the default profile given currently connected monitors.",
+        help="Apply the default profile given currently connected outputs.",
     )
     group.add_argument(
         "-c",
