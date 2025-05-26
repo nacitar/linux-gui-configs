@@ -15,6 +15,5 @@ rm -f "${HOME}/.fluxbox/lastwallpaper"
 # background services
 command -v picom &>/dev/null && picom &>picom.log &
 command -v dunst &>/dev/null && dunst &>dunst.log &
-command -v steam &>/dev/null && steam &>steam.log &
 popd &>/dev/null
 exec fluxbox
