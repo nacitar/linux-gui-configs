@@ -44,7 +44,7 @@ session.screen0.workspacewarpingverticaloffset:	1
 session.screen0.workspacewarpinghorizontaloffset:	1
 session.screen0.fullMaximization:	false
 session.screen0.rowPlacementDirection:	LeftToRight
-session.screen0.workspacewarping:	true
+session.screen0.workspacewarping:	false
 session.screen0.windowMenu:	~/.fluxbox/windowmenu
 session.screen0.clickRaises:	true
 session.screen0.opaqueResize:	false

@@ -299,6 +299,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     add_log_arguments(parser)
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument(
+        "--state",
+        action="store_true",
+        help="Prints the screen state as known by the tool.",
+    )
+    group.add_argument(
         "-l", "--list", action="store_true", help="Lists available profiles."
     )
     group.add_argument(
@@ -328,15 +333,21 @@ def main(argv: Sequence[str] | None = None) -> int:
     group.add_argument(
         "--primary-resolution",
         action="store_true",
-        help="Gets the primary output's resolution."
+        help="Gets the primary output's resolution.",
     )
     args = parser.parse_args(args=argv)
     configure_logging(args)
 
-    if args.primary_resolution:
-        print(XRandr().state().primary_output.configuration.mode.resolution)
+    if args.state:
+        print(XRandr().state())
+    elif args.primary_resolution:
+        configuration = XRandr().state().primary_output.configuration
+        if configuration:
+            print(configuration.mode.resolution)
     else:
-        settings = Settings.from_json(gui_config_dir() / "output-profiles.json")
+        settings = Settings.from_json(
+            gui_config_dir() / "output-profiles.json"
+        )
         selector = ProfileSelector(settings)
         if args.list:
             for profile in settings.profiles:

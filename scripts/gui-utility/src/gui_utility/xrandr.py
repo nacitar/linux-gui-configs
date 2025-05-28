@@ -46,11 +46,136 @@ class Mode:
 
 @dataclass(frozen=True)
 class EDIDInfo:
-    reported_modes: frozenset[Mode]
-    preferred_mode: Mode | None
+    raw: bytes
+
+    def __post_init__(self) -> None:
+        if (
+            len(self.raw) < 128
+            or self.raw[:8] != b"\x00\xff\xff\xff\xff\xff\xff\x00"
+        ):
+            raise AssertionError(f"Invalid edid data: {self.raw.hex()}")
 
     @cached_property
-    def sorted(self) -> tuple[Mode, ...]:
+    def identifier(self) -> str:
+        parts = []
+        if self.manufacturer_id:
+            parts.append(f"[{self.manufacturer_id}]")
+        if self.name_descriptor:
+            parts.append(self.name_descriptor)
+
+        serial = self.serial_descriptor
+        if not serial and self.serial_number:
+            serial = str(self.serial_number)
+        if serial:
+            parts.append(f"({serial})")
+
+        return " ".join(parts)
+
+    @cached_property
+    def base(self) -> bytes:
+        return self.raw[:128]
+
+    @cached_property
+    def descriptor_blocks(self) -> tuple[bytes, ...]:
+        blocks: list[bytes] = []
+        for index in range(4):
+            block = self.base[0x36 + 18 * index : 0x36 + 18 * (index + 1)]
+            if block[:2] == b"\x00\x00":
+                if block[2]:
+                    raise AssertionError(
+                        f"Reserved descriptor byte nonzero: {block.hex()}"
+                    )
+                blocks.append(block)
+            else:
+                # NOTE: xrandr's output already parsed these, and and given
+                # xrandr is being used to set things all that matters is what
+                # xrandr things these are.
+                logger.debug(f"Skipping DTD descriptor: {block.hex()}")
+        return tuple(blocks)
+
+    def descriptor(self, id: int) -> bytes:
+        for block in self.descriptor_blocks:
+            if block[3] == id:
+                return block
+        return b""
+
+    @cached_property
+    def name_descriptor(self) -> str:
+        if block := self.descriptor(0xFC):
+            if block[4]:
+                raise AssertionError(
+                    f"name descriptor reserved byte non-zero: {block.hex()}"
+                )
+            return block[5:18].decode("ascii", errors="ignore").strip()
+        return ""
+
+    @cached_property
+    def serial_descriptor(self) -> str:
+        if block := self.descriptor(0xFF):
+            if block[4]:
+                raise AssertionError(
+                    f"serial descriptor reserved byte non-zero: {block.hex()}"
+                )
+            return block[5:18].decode("ascii", errors="ignore").strip()
+        return ""
+
+    @property
+    def manufacturer_id(self) -> str:
+        word = int.from_bytes(self.base[0x08:0x0A], "big")
+        return "".join(
+            chr(c)
+            for c in (
+                ((word >> 10) & 0x1F) + 64,
+                ((word >> 5) & 0x1F) + 64,
+                (word & 0x1F) + 64,
+            )
+        )
+
+    @property
+    def model(self) -> int:
+        return int.from_bytes(self.base[0x0A:0x0C], "little")
+
+    @property
+    def serial_number(self) -> int:
+        return int.from_bytes(self.base[0x0C:0x10], "little")
+
+    @property
+    def manufacture_week(self) -> int:
+        return int(self.base[0x10])
+
+    @property
+    def manufacture_year(self) -> int:
+        return int(self.base[0x11]) + 1990
+
+    @property
+    def edid_version_major(self) -> int:
+        return int(self.base[0x12])
+
+    @property
+    def edid_version_revision(self) -> int:
+        return int(self.base[0x13])
+
+    @property
+    def edid_full_version(self) -> str:
+        return f"{self.edid_version_major}.{self.edid_version_revision}"
+
+    @property
+    def extension_count(self) -> int:
+        return int(self.base[0x7E])
+
+    @property
+    def checksum(self) -> int:
+        return int(self.base[0x7F])
+
+
+@dataclass(frozen=True)
+class Monitor:
+    reported_modes: frozenset[Mode]
+    preferred_mode: Mode | None
+    edid: EDIDInfo | None
+
+    @cached_property
+    def sorted_modes(self) -> tuple[Mode, ...]:
         preferred_resolution_modes: list[Mode] = []
         if self.preferred_mode:
             preferred_resolution_modes = [self.preferred_mode] + sorted(
@@ -76,7 +201,7 @@ class EDIDInfo:
     def default_mode(self) -> Mode:
         if self.preferred_mode:
             return self.preferred_mode
-        return self.sorted[0]
+        return self.sorted_modes[0]
 
     def supports_mode(self, mode: Mode) -> bool:
         return mode in self.reported_modes
@@ -92,7 +217,7 @@ class Configuration:
 class Output:
     name: str
     connected: bool
-    edid: EDIDInfo | None
+    monitor: Monitor | None
     configuration: Configuration | None
     primary: bool
 
@@ -110,7 +235,7 @@ class Output:
                 f"{self.configuration.position}"
             )
         lines.append(" ".join(output_parts))
-        if self.edid:  # outputs in the same order xrandr does
+        if self.monitor:  # outputs in the same order xrandr does
             rates: list[str] = []
             resolution: Resolution | None = None
 
@@ -118,7 +243,7 @@ class Output:
                 if rates:
                     lines.append(f"   {resolution}\t{'\t'.join(rates)}")
 
-            for mode in self.edid.sorted:
+            for mode in self.monitor.sorted_modes:
                 if not resolution or resolution != mode.resolution:
                     add_resolution()
                     rates = []
@@ -126,7 +251,7 @@ class Output:
                 is_current = (
                     self.configuration and self.configuration.mode == mode
                 )
-                is_preferred = self.edid.preferred_mode == mode
+                is_preferred = self.monitor.preferred_mode == mode
                 suffix = ("*" if is_current else " ") + (
                     "+" if is_preferred else " "
                 )
@@ -185,20 +310,22 @@ class Screen:
 
 
 _SCREEN_PATTERN = re.compile(
-    r"Screen (?P<name>[^:]+):.*"
-    r" current (?P<width>\d+) x (?P<height>\d+)(,|\s|$)"
+    r"^Screen (?P<name>[^:]+):.*"
+    r" current (?P<width>\d+) x (?P<height>\d+)([,\s].*)?$"
 )
 _OUTPUT_PATTERN = re.compile(
-    r"(?P<name>[^\s]+) (?P<state>(dis)?connected)( (?P<primary>primary))?"
+    r"^(?P<name>[^\s]+) (?P<state>(dis)?connected)( (?P<primary>primary))?"
     r"( (?P<width>\d+)x(?P<height>\d+)\+(?P<x>\d+)\+(?P<y>\d+))?"
-    r"(\s|$).*"
-)
-_REFRESH_RATE_PATTERN = re.compile(
-    r"\s*(?P<rate>\d+(\.\d+)?)(?P<current>\*)?\s*(?P<preferred>\+)?"
+    r"(\s.*)?$"
 )
 _SUPPORTED_RESOLUTION_PATTERN = re.compile(
-    r"\s+(?P<width>\d+)x(?P<height>\d+)(?P<remaining>.*)$"
+    r"^\s+(?P<width>\d+)x(?P<height>\d+)(?P<remaining>.*)$"
 )
+_REFRESH_RATE_PATTERN = re.compile(  # not a full-line match
+    r"\s*(?P<rate>\d+(\.\d+)?)(?P<current>\*)?\s*(?P<preferred>\+)?"
+)
+_EDID_PATTERN = re.compile(r"^\s+EDID:\s*$")
+_HEX_PATTERN = re.compile(r"^\s+(?P<hex>[\da-fA-F]+)\s*$")
 
 
 @dataclass
@@ -231,6 +358,8 @@ class XRandr:
         output_edid_modes: list[Mode]
         output_edid_preferred_mode: Mode | None
         output_configuration: Configuration | None
+        output_edid_lines: list[str]
+        in_section: str
 
         def clear_output() -> None:
             nonlocal output_name
@@ -251,19 +380,32 @@ class XRandr:
             output_edid_preferred_mode = None
             nonlocal output_configuration
             output_configuration = None
+            nonlocal output_edid_lines
+            output_edid_lines = []
+            nonlocal in_section
+            in_section = ""
 
         clear_output()
 
         def add_pending_output() -> None:
             if not output_name:
                 return
-            if output_edid_modes or output_edid_preferred_mode:
-                edid = EDIDInfo(
+            if (
+                output_edid_modes
+                or output_edid_preferred_mode
+                or output_edid_lines
+            ):
+                monitor = Monitor(
                     reported_modes=frozenset(output_edid_modes),
                     preferred_mode=output_edid_preferred_mode,
+                    edid=(
+                        EDIDInfo(raw=bytes.fromhex("".join(output_edid_lines)))
+                        if output_edid_lines
+                        else None
+                    ),
                 )
             else:
-                edid = None
+                monitor = None
             if output_resolution and output_position:
                 configuration = Configuration(
                     mode=Mode(
@@ -278,18 +420,28 @@ class XRandr:
                 Output(
                     name=output_name,
                     connected=output_connected,
-                    edid=edid,
+                    monitor=monitor,
                     configuration=configuration,
                     primary=output_primary,
                 )
             )
             clear_output()
 
-        for line in self.tool.invoke(["--query"]).splitlines():
+        for line in self.tool.invoke(["--prop"]).splitlines():
+            if match := _EDID_PATTERN.match(line):
+                in_section = "edid"
+                continue
+            elif in_section == "edid":
+                if match := _HEX_PATTERN.match(line):
+                    output_edid_lines.append(match.group("hex"))
+                    continue
+                else:
+                    in_section = ""
+            # sections go above this
             if match := _SUPPORTED_RESOLUTION_PATTERN.match(line):
                 if not output_name:
                     raise AssertionError(
-                        "EDID line matched, but no current output"
+                        "Resolution line matched, but no current output"
                     )
 
                 edid_resolution = Resolution(
@@ -308,33 +460,33 @@ class XRandr:
                         output_refresh_rate = edid_mode.refresh_rate
                     if match.group("preferred"):  # TODO: check double set?
                         output_edid_preferred_mode = edid_mode
-            else:
+            elif match := _SCREEN_PATTERN.match(line):
                 add_pending_output()
-                if match := _SCREEN_PATTERN.match(line):
-                    if screen_name:
-                        raise AssertionError("multiple screens!")
-                    screen_name = match.group("name")
-                    if (width := match.group("width")) and (
-                        height := match.group("height")
-                    ):
-                        combined_resolution = Resolution(
-                            width=int(width), height=int(height)
-                        )
-                elif match := _OUTPUT_PATTERN.match(line):
-                    output_name = match.group("name")
-                    output_connected = bool(
-                        match.group("state") == "connected"
+                if screen_name:
+                    raise AssertionError("multiple screens!")
+                screen_name = match.group("name")
+                if (width := match.group("width")) and (
+                    height := match.group("height")
+                ):
+                    combined_resolution = Resolution(
+                        width=int(width), height=int(height)
                     )
-                    output_primary = bool(match.group("primary"))
+            elif match := _OUTPUT_PATTERN.match(line):
+                add_pending_output()
+                output_name = match.group("name")
+                output_connected = bool(match.group("state") == "connected")
+                output_primary = bool(match.group("primary"))
 
-                    if match.group("width"):  # the rest must be present too
-                        output_resolution = Resolution(
-                            width=int(match.group("width")),
-                            height=int(match.group("height")),
-                        )
-                        output_position = Position(
-                            x=int(match.group("x")), y=int(match.group("y"))
-                        )
+                if match.group("width"):  # the rest must be present too
+                    output_resolution = Resolution(
+                        width=int(match.group("width")),
+                        height=int(match.group("height")),
+                    )
+                    output_position = Position(
+                        x=int(match.group("x")), y=int(match.group("y"))
+                    )
+            else:
+                logger.debug(f"unparsed line: {line}")
         add_pending_output()
 
         if not screen_name or not combined_resolution:
