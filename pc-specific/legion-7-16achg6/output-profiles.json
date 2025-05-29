@@ -29,7 +29,7 @@
         }
       }
     },
-    "primary": {
+    "office": {
       "pactl_sink_regex": ".*\\.hdmi-stereo",
       "outputs": {
         "HDMI-0": {

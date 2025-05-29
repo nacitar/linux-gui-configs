@@ -366,8 +366,8 @@ class XRandr:
         output_resolution: Resolution | None
         output_refresh_rate: Decimal | None = None
         output_position: Position | None
-        output_edid_modes: list[Mode]
-        output_edid_preferred_mode: Mode | None
+        output_modes: list[Mode]
+        output_preferred_mode: Mode | None
         output_configuration: Configuration | None
         output_edid_lines: list[str]
         in_section: str
@@ -385,10 +385,10 @@ class XRandr:
             output_refresh_rate = None
             nonlocal output_position
             output_position = None
-            nonlocal output_edid_modes
-            output_edid_modes = []
-            nonlocal output_edid_preferred_mode
-            output_edid_preferred_mode = None
+            nonlocal output_modes
+            output_modes = []
+            nonlocal output_preferred_mode
+            output_preferred_mode = None
             nonlocal output_configuration
             output_configuration = None
             nonlocal output_edid_lines
@@ -402,13 +402,13 @@ class XRandr:
             if not output_name:
                 return
             if (
-                output_edid_modes
-                or output_edid_preferred_mode
+                output_modes
+                or output_preferred_mode
                 or output_edid_lines
             ):
                 monitor = Monitor(
-                    reported_modes=frozenset(output_edid_modes),
-                    preferred_mode=output_edid_preferred_mode,
+                    reported_modes=frozenset(output_modes),
+                    preferred_mode=output_preferred_mode,
                     edid=(
                         EDIDInfo(raw=bytes.fromhex("".join(output_edid_lines)))
                         if output_edid_lines
@@ -462,15 +462,15 @@ class XRandr:
                 for match in re.finditer(
                     _REFRESH_RATE_PATTERN, match.group("remaining")
                 ):
-                    edid_mode = Mode(
+                    mode = Mode(
                         resolution=edid_resolution,
                         refresh_rate=Decimal(match.group("rate")),
                     )
-                    output_edid_modes.append(edid_mode)
+                    output_modes.append(mode)
                     if match.group("current"):  # TODO: check double set?
-                        output_refresh_rate = edid_mode.refresh_rate
+                        output_refresh_rate = mode.refresh_rate
                     if match.group("preferred"):  # TODO: check double set?
-                        output_edid_preferred_mode = edid_mode
+                        output_preferred_mode = mode
             elif match := _SCREEN_PATTERN.match(line):
                 add_pending_output()
                 if screen_name:
