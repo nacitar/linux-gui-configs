@@ -355,7 +355,11 @@ class XRandr:
     def invoke(self, arguments: list[str]) -> str:
         return self.tool.invoke(arguments)
 
-    def state(self) -> Screen:
+    def set_primary_output(self, output_name: str) -> str:
+        logger.info(f"Setting primary output: {output_name}")
+        return self.tool.invoke(["--output", output_name, "--primary"])
+
+    def screen(self) -> Screen:
         screen_name = ""
         combined_resolution: Resolution | None = None
         outputs: list[Output] = []
@@ -401,11 +405,7 @@ class XRandr:
         def add_pending_output() -> None:
             if not output_name:
                 return
-            if (
-                output_modes
-                or output_preferred_mode
-                or output_edid_lines
-            ):
+            if output_modes or output_preferred_mode or output_edid_lines:
                 monitor = Monitor(
                     reported_modes=frozenset(output_modes),
                     preferred_mode=output_preferred_mode,

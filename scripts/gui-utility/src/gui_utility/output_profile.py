@@ -133,6 +133,14 @@ def gui_config_dir() -> Path:
     return Path(config_home) / "ns-gui-utility"
 
 
+def on_primary_output_change(old: str, new: str) -> bool:
+    script = gui_config_dir() / "on-primary-output-change"
+    if old != new and script.exists():
+        CLITool(binary=str(script)).invoke([new], capture_output=False)
+        return True
+    return False
+
+
 @dataclass
 class XProp:
     tool: CLITool = field(default_factory=lambda: CLITool("xprop"))
@@ -149,7 +157,7 @@ class ProfileSelector:
     pactl: PACtl = field(default_factory=lambda: PACtl())
     xrandr: XRandr = field(default_factory=lambda: XRandr())
     xprop: XProp = field(default_factory=lambda: XProp())
-    state: Screen = field(init=False)
+    screen: Screen = field(init=False)
     current_profile: str = field(init=False)
     default_profile: str = field(init=False)
 
@@ -157,13 +165,13 @@ class ProfileSelector:
         self.update_state()
 
     def update_state(self) -> None:
-        self.state = self.xrandr.state()
+        self.screen = self.xrandr.screen()
         self.current_profile = self._get_current_profile()
         self.default_profile = self._get_default_profile()
 
     def _get_default_profile(self) -> str:
         logger.debug("determining default profile...")
-        connected_output_names = set(self.state.connected_output_names)
+        connected_output_names = set(self.screen.connected_output_names)
 
         best_match = max(
             (
@@ -183,7 +191,7 @@ class ProfileSelector:
 
     def _get_current_profile(self) -> str:
         logger.debug("determining current profile...")
-        active_output_names = set(self.state.active_output_names)
+        active_output_names = set(self.screen.active_output_names)
         # TODO: don't just match by outputs, but also by resolution
         match = max(
             (
@@ -212,7 +220,7 @@ class ProfileSelector:
         else:
             # all profiles
             profile_list = profile_names
-        connected_output_names = set(self.state.connected_output_names)
+        connected_output_names = set(self.screen.connected_output_names)
         for next_profile in profile_list:
             profile = self.settings.profiles[next_profile]
             if set(profile.outputs.keys()) <= connected_output_names:
@@ -229,14 +237,17 @@ class ProfileSelector:
         profile = self.settings.profiles[name]
         xrandr_cli: list[str] = []
 
+        new_primary_output_name = primary_output_name = (
+            self.screen.primary_output.name
+        )
         any_output = False
-        for output in self.state.connected_output_names:
-            if output in profile.outputs:
-                output_state = profile.outputs[output]
+        for output_name in self.screen.connected_output_names:
+            if output_name in profile.outputs:
+                output_state = profile.outputs[output_name]
                 xrandr_cli.extend(
                     [
                         "--output",
-                        output,
+                        output_name,
                         "--mode",
                         str(output_state.configuration.mode.resolution),
                     ]
@@ -253,9 +264,10 @@ class ProfileSelector:
                 )
                 if output_state.primary:
                     xrandr_cli.append("--primary")
+                    new_primary_output_name = output_name
                 any_output = True
             else:
-                xrandr_cli.extend(["--output", output, "--off"])
+                xrandr_cli.extend(["--output", output_name, "--off"])
         if not any_output:
             raise AssertionError("no output would have been enabled!")
 
@@ -289,7 +301,8 @@ class ProfileSelector:
             if remaining_ms <= 0:
                 logger.error("no new root pixmap within timeout.")
 
-            print(CLITool(binary=str(on_change)).invoke([name]))
+            CLITool(binary=str(on_change)).invoke([name], capture_output=False)
+        on_primary_output_change(primary_output_name, new_primary_output_name)
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -314,9 +327,14 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
     group.add_argument(
         "-c",
-        "--cycle",
+        "--cycle-profile",
         action="store_true",
         help="Cycles between display profiles.",
+    )
+    group.add_argument(
+        "--cycle-primary",
+        action="store_true",
+        help="Cycles the current primary output among active outputs.",
     )
     group.add_argument(
         "-p",
@@ -339,11 +357,21 @@ def main(argv: Sequence[str] | None = None) -> int:
     configure_logging(args)
 
     if args.state:
-        print(XRandr().state())
+        print(XRandr().screen())
     elif args.primary_resolution:
-        configuration = XRandr().state().primary_output.configuration
+        configuration = XRandr().screen().primary_output.configuration
         if configuration:
             print(configuration.mode.resolution)
+    elif args.cycle_primary:
+        xrandr = XRandr()
+        screen = xrandr.screen()
+        primary_output_name = screen.primary_output.name
+        next_primary_output_name = screen.active_output_names[
+            (screen.active_output_names.index(screen.primary_output.name) + 1)
+            % len(screen.active_output_names)
+        ]
+        xrandr.set_primary_output(next_primary_output_name)
+        on_primary_output_change(primary_output_name, next_primary_output_name)
     else:
         settings = Settings.from_json(
             gui_config_dir() / "output-profiles.json"
@@ -357,7 +385,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         else:
             if args.default:
                 next_profile = selector.default_profile
-            elif args.cycle:
+            elif args.cycle_profile:
                 next_profile = selector.next_valid_profile()
             elif args.profile:
                 next_profile = args.profile

@@ -67,7 +67,7 @@ session.screen0.maxDisableMove:	false
 session.screen0.showwindowposition:	false
 session.screen0.focusModel:	ClickFocus
 session.screen0.opaqueResizeDelay:	50
-session.screen0.allowRemoteActions:	false
+session.screen0.allowRemoteActions:	true
 session.autoRaiseDelay:	250
 session.appsFile:	~/.fluxbox/apps
 session.colorsPerChannel:	4

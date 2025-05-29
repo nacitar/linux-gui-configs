@@ -86,6 +86,9 @@ if [[ -n ${pc_dir} ]]; then
     symlink_overwrite \
         "${pc_dir}/on-output-profile-change" \
         "${gui_config_dir}/on-output-profile-change"
+    symlink_overwrite \
+        "${pc_dir}/on-primary-output-change" \
+        "${gui_config_dir}/on-primary-output-change"
 fi
 
 path_d_dir="${HOME}/.integration/path.d"
