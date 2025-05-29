@@ -62,6 +62,8 @@ class EDIDInfo:
             parts.append(f"[{self.manufacturer_id}]")
         if self.name_descriptor:
             parts.append(self.name_descriptor)
+        elif self.model:
+            parts.append(str(self.model))
 
         serial = self.serial_descriptor
         if not serial and self.serial_number:
@@ -87,9 +89,9 @@ class EDIDInfo:
                     )
                 blocks.append(block)
             else:
-                # NOTE: xrandr's output already parsed these, and and given
-                # xrandr is being used to set things all that matters is what
-                # xrandr things these are.
+                # NOTE: xrandr's output already parsed these, and given xrandr
+                # is being used to set things all that matters is what xrandr
+                # parses for these.
                 logger.debug(f"Skipping DTD descriptor: {block.hex()}")
         return tuple(blocks)
 
@@ -174,6 +176,12 @@ class Monitor:
     preferred_mode: Mode | None
     edid: EDIDInfo | None
 
+    @property
+    def identifier(self) -> str:
+        if self.edid:
+            return self.edid.identifier
+        return ""
+
     @cached_property
     def sorted_modes(self) -> tuple[Mode, ...]:
         preferred_resolution_modes: list[Mode] = []
@@ -234,6 +242,9 @@ class Output:
                 f"{self.configuration.mode.resolution}"
                 f"{self.configuration.position}"
             )
+
+        if self.monitor:
+            output_parts.extend(["=", self.monitor.identifier])
         lines.append(" ".join(output_parts))
         if self.monitor:  # outputs in the same order xrandr does
             rates: list[str] = []
