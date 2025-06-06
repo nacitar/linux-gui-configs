@@ -29,13 +29,22 @@ class DefaultProfile:
 @dataclass
 class OutputState:
     configuration: Configuration
-    primary: bool
+    primary_candidate: bool
 
 
 @dataclass
 class Profile:
     pactl_sink_option_regexes: list[str]
     outputs: dict[str, OutputState]
+
+    @property  # can't cache; not frozen
+    def primary_output_name(self) -> str:
+        if self.outputs:
+            for name, state in self.outputs.items():
+                if state.primary_candidate:
+                    return name
+            return next(iter(self.outputs.keys()), "")
+        return ""
 
 
 @dataclass
@@ -74,7 +83,9 @@ class Settings:
                                     **output_state["configuration"]["position"]
                                 ),
                             ),
-                            primary=bool(output_state["primary"]),
+                            primary_candidate=bool(
+                                output_state.get("primary_candidate", False)
+                            ),
                         )
                         for output_name, output_state in profile[
                             "outputs"
@@ -213,6 +224,26 @@ class ProfileSelector:
         logger.warning("no valid next pactl sink could be determined.")
         return ""
 
+    def cycle_primary_output(self) -> str:
+        candidate_outputs: list[str] = []
+        if self.current_profile:
+            profile = self.settings.profiles[self.current_profile]
+            candidate_outputs = [
+                name
+                for name, state in profile.outputs.items()
+                if state.primary_candidate
+            ]
+        if not candidate_outputs:
+            candidate_outputs = list(self.screen.active_output_names)
+        primary_output_name = self.screen.primary_output.name
+        next_primary_output_name = candidate_outputs[
+            (candidate_outputs.index(primary_output_name) + 1)
+            % len(candidate_outputs)
+        ]
+        self.xrandr.set_primary_output(next_primary_output_name)
+        on_primary_output_change(primary_output_name, next_primary_output_name)
+        return next_primary_output_name
+
     def next_valid_profile(self, name: str = "") -> str:
         if not name:
             name = self.current_profile
@@ -242,9 +273,8 @@ class ProfileSelector:
         profile = self.settings.profiles[name]
         xrandr_cli: list[str] = []
 
-        new_primary_output_name = primary_output_name = (
-            self.screen.primary_output.name
-        )
+        primary_output_name = self.screen.primary_output.name
+        new_primary_output_name = profile.primary_output_name
         any_output = False
         for output_name in self.screen.connected_output_names:
             if output_name in profile.outputs:
@@ -267,9 +297,8 @@ class ProfileSelector:
                 xrandr_cli.extend(
                     ["--pos", output_state.configuration.position.to_cli_str()]
                 )
-                if output_state.primary:
+                if output_name == new_primary_output_name:
                     xrandr_cli.append("--primary")
-                    new_primary_output_name = output_name
                 any_output = True
             else:
                 xrandr_cli.extend(["--output", output_name, "--off"])
@@ -351,9 +380,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         ),
     )
     group.add_argument(
-        "--profile",
-        type=str,
-        help="Sets the profile to the specified one.",
+        "--profile", type=str, help="Sets the profile to the specified one."
     )
     group.add_argument(
         "--get-current-profile",
@@ -374,16 +401,6 @@ def main(argv: Sequence[str] | None = None) -> int:
         configuration = XRandr().screen().primary_output.configuration
         if configuration:
             print(configuration.mode.resolution)
-    elif args.cycle_primary:
-        xrandr = XRandr()
-        screen = xrandr.screen()
-        primary_output_name = screen.primary_output.name
-        next_primary_output_name = screen.active_output_names[
-            (screen.active_output_names.index(screen.primary_output.name) + 1)
-            % len(screen.active_output_names)
-        ]
-        xrandr.set_primary_output(next_primary_output_name)
-        on_primary_output_change(primary_output_name, next_primary_output_name)
     else:
         settings = Settings.from_json(
             gui_config_dir() / "output-profiles.json"
@@ -394,6 +411,8 @@ def main(argv: Sequence[str] | None = None) -> int:
                 print(profile)
         elif args.get_current_profile:
             print(selector.current_profile)
+        elif args.cycle_primary:
+            selector.cycle_primary_output()
         elif args.cycle_profile:
             if args.default_profile:
                 next_profile = selector.default_profile
