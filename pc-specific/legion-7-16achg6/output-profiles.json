@@ -9,7 +9,10 @@
   ],
   "profiles": {
     "single": {
-      "pactl_sink_regex": ".*\\.analog-stereo",
+      "pactl_sink_option_regexes": [
+        ".*\\.analog-stereo",
+        ".*\\.usb-.*[Mm]icrophone.*\\.[^.]+-stereo"
+      ],
       "outputs": {
         "DP-2": {
           "configuration": {
@@ -30,7 +33,11 @@
       }
     },
     "office": {
-      "pactl_sink_regex": ".*\\.hdmi-stereo",
+      "pactl_sink_option_regexes": [
+        ".*\\.hdmi-stereo",
+        ".*\\.usb-.*[Mm]icrophone.*\\.[^.]+-stereo",
+        ".*\\.analog-stereo"
+      ],
       "outputs": {
         "HDMI-0": {
           "configuration": {

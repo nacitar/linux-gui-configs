@@ -13,7 +13,8 @@ if [[ -d ${HOME}/.xprofile.d ]]; then
 fi
 
 # apply default output profile (and wallpaper)
-command -v ns-gui-utility &>/dev/null && ns-gui-utility output-profile -d
+command -v ns-gui-utility &>/dev/null \
+    && ns-gui-utility output-profile --default-profile
 
 # X settings
 xset s off  # disable screen blanking

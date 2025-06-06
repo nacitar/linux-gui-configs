@@ -279,24 +279,38 @@ class Screen:
     """
 
     name: str
-    combined_resolution: Resolution
     outputs: tuple[Output, ...]
 
     @cached_property
-    def connected_outputs(self) -> tuple[Output, ...]:
-        return tuple(output for output in self.outputs if output.connected)
-
-    @cached_property
-    def active_outputs(self) -> tuple[Output, ...]:
-        return tuple(output for output in self.outputs if output.configuration)
+    def combined_resolution(self) -> Resolution:
+        left = top = right = bottom = 0
+        for output in self.outputs:
+            if output.configuration:
+                left = min(left, output.configuration.position.x)
+                top = min(top, output.configuration.position.y)
+                right = max(
+                    right,
+                    output.configuration.position.x
+                    + output.configuration.mode.resolution.width,
+                )
+                bottom = max(
+                    bottom,
+                    output.configuration.position.y
+                    + output.configuration.mode.resolution.height,
+                )
+        return Resolution(width=right - left, height=bottom - top)
 
     @cached_property
     def connected_output_names(self) -> tuple[str, ...]:
-        return tuple(output.name for output in self.connected_outputs)
+        return tuple(
+            output.name for output in self.outputs if output.connected
+        )
 
     @cached_property
     def active_output_names(self) -> tuple[str, ...]:
-        return tuple(output.name for output in self.active_outputs)
+        return tuple(
+            output.name for output in self.outputs if output.configuration
+        )
 
     @cached_property
     def primary_output(self) -> Output:
@@ -309,8 +323,11 @@ class Screen:
             raise AssertionError("Multiple primary outputs!")
         if primary_outputs:
             return primary_outputs[0]
-        if self.active_outputs:
-            return self.active_outputs[0]
+        active_outputs = [
+            output for output in self.outputs if output.configuration
+        ]
+        if active_outputs:
+            return active_outputs[0]
         raise LookupError("no primary output because no active outputs")
 
     def __str__(self) -> str:
@@ -361,7 +378,6 @@ class XRandr:
 
     def screen(self) -> Screen:
         screen_name = ""
-        combined_resolution: Resolution | None = None
         outputs: list[Output] = []
 
         output_name: str
@@ -476,12 +492,6 @@ class XRandr:
                 if screen_name:
                     raise AssertionError("multiple screens!")
                 screen_name = match.group("name")
-                if (width := match.group("width")) and (
-                    height := match.group("height")
-                ):
-                    combined_resolution = Resolution(
-                        width=int(width), height=int(height)
-                    )
             elif match := _OUTPUT_PATTERN.match(line):
                 add_pending_output()
                 output_name = match.group("name")
@@ -499,11 +509,4 @@ class XRandr:
             else:
                 logger.debug(f"unparsed line: {line}")
         add_pending_output()
-
-        if not screen_name or not combined_resolution:
-            raise AssertionError("display (virtual screen) missing fields.")
-        return Screen(
-            name=screen_name,
-            combined_resolution=combined_resolution,
-            outputs=tuple(outputs),
-        )
+        return Screen(name=screen_name or "0", outputs=tuple(outputs))

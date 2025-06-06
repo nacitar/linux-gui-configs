@@ -64,7 +64,8 @@ Mod4 B :Exec brave
 Mod4 S :Exec spotify-launcher
 # cycle between profiles
 Mod4 minus :Exec ns-gui-utility output-profile --cycle-profile
-Mod4 P :Exec ns-gui-utility output-profile --cycle-primary
+Mod4 backslash :Exec ns-gui-utility output-profile --cycle-primary
+Mod4 apostrophe :Exec ns-gui-utility output-profile --cycle-pactl-sink
 
 # volume settings; can use xev to find keycodes if it doesn't work
 XF86AudioRaiseVolume :Exec amixer sset Master 2%+

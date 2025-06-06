@@ -14,40 +14,10 @@ from typing import Any, Sequence
 
 from .cli_tool import CLITool
 from .log_utility import add_log_arguments, configure_logging
+from .pactl import PACtl, Sink
 from .xrandr import Configuration, Mode, Position, Resolution, Screen, XRandr
 
 logger = logging.getLogger(__name__)
-
-
-@dataclass
-class PACtl:
-    tool: CLITool = field(default_factory=lambda: CLITool("pactl"))
-
-    def get_sinks(self) -> list[str]:
-        data: list[dict[str, str | int]] = json.loads(
-            self.tool.invoke(["-f", "json", "list", "short", "sinks"])
-        )
-        sinks: list[str] = []
-        for entry in data:
-            sinks.append(str(entry["name"]))
-        return sinks
-
-    def get_default_sink(self) -> str:
-        return self.tool.invoke(["get-default-sink"])
-
-    def set_default_sink(self, name: str) -> None:
-        logger.info(f"setting default PulseAudio sink to {name}")
-        self.tool.invoke(["set-default-sink", name])
-
-    def cycle_default_sink(self) -> None:
-        sinks = self.get_sinks()
-        default_sink = self.get_default_sink()
-        selected_index = next(
-            (i for i, sink in enumerate(sinks) if sink == default_sink), -1
-        )
-        next_sink = sinks[(selected_index + 1) % len(sinks)]
-        logger.info(f"cycling PulseAudio from {default_sink} to {next_sink}")
-        self.set_default_sink(next_sink)
 
 
 @dataclass
@@ -64,7 +34,7 @@ class OutputState:
 
 @dataclass
 class Profile:
-    pactl_sink_regex: str
+    pactl_sink_option_regexes: list[str]
     outputs: dict[str, OutputState]
 
 
@@ -82,7 +52,9 @@ class Settings:
             ],
             profiles={
                 name: Profile(
-                    pactl_sink_regex=profile["pactl_sink_regex"],
+                    pactl_sink_option_regexes=profile[
+                        "pactl_sink_option_regexes"
+                    ],
                     outputs={
                         output_name: OutputState(
                             configuration=Configuration(
@@ -160,6 +132,7 @@ class ProfileSelector:
     screen: Screen = field(init=False)
     current_profile: str = field(init=False)
     default_profile: str = field(init=False)
+    candidate_pactl_sinks: list[Sink] = field(init=False)
 
     def __post_init__(self) -> None:
         self.update_state()
@@ -168,6 +141,7 @@ class ProfileSelector:
         self.screen = self.xrandr.screen()
         self.current_profile = self._get_current_profile()
         self.default_profile = self._get_default_profile()
+        self.candidate_pactl_sinks = self._get_candidate_pactl_sinks()
 
     def _get_default_profile(self) -> str:
         logger.debug("determining default profile...")
@@ -192,7 +166,6 @@ class ProfileSelector:
     def _get_current_profile(self) -> str:
         logger.debug("determining current profile...")
         active_output_names = set(self.screen.active_output_names)
-        # TODO: don't just match by outputs, but also by resolution
         match = max(
             (
                 name
@@ -207,6 +180,38 @@ class ProfileSelector:
             return ""
         logger.info(f"current profile determined: {match}")
         return match
+
+    def _get_candidate_pactl_sinks(self) -> list[Sink]:
+        candidate_sinks = self.pactl.get_sinks()
+        if self.current_profile:
+            profile = self.settings.profiles[self.current_profile]
+            if profile.pactl_sink_option_regexes:
+                remaining_sinks: set[Sink] = set(candidate_sinks)
+                filtered_sinks: list[Sink] = []
+                for pactl_sink_regex in profile.pactl_sink_option_regexes:
+                    pattern = re.compile(pactl_sink_regex)
+                    for sink in remaining_sinks:
+                        if pattern.match(sink.name):
+                            remaining_sinks.remove(sink)
+                            filtered_sinks.append(sink)
+                            break
+                if filtered_sinks:
+                    candidate_sinks = filtered_sinks
+        return candidate_sinks
+
+    def cycle_pactl_sink(self) -> str:
+        current_sink_name = self.pactl.get_default_sink_name()
+        sink_names = [sink.name for sink in self.candidate_pactl_sinks]
+        try:
+            index = sink_names.index(current_sink_name)
+            sink_names = sink_names[index + 1 :] + sink_names[:index]
+        except ValueError:
+            pass
+        if sink_names:
+            self.pactl.set_default_sink(sink_names[0])
+            return sink_names[0]
+        logger.warning("no valid next pactl sink could be determined.")
+        return ""
 
     def next_valid_profile(self, name: str = "") -> str:
         if not name:
@@ -275,17 +280,20 @@ class ProfileSelector:
         logger.info("invoking xrandr...")
         self.xrandr.invoke(xrandr_cli)
 
-        if profile.pactl_sink_regex:
-            sink_pattern = re.compile(profile.pactl_sink_regex)
-            matched_sinks = [
-                sink
-                for sink in self.pactl.get_sinks()
-                if sink_pattern.match(sink)
-            ]
-            if matched_sinks:
-                self.pactl.set_default_sink(matched_sinks[0])
-            else:
-                logger.warn(f"no sink matched: {profile.pactl_sink_regex}")
+        if profile.pactl_sink_option_regexes:
+            for pactl_sink_regex in profile.pactl_sink_option_regexes:
+                sink_pattern = re.compile(pactl_sink_regex)
+                matched_sinks = [
+                    sink
+                    for sink in self.pactl.get_sinks()
+                    if sink_pattern.match(sink.name)
+                ]
+                if matched_sinks:
+                    logger.info(f"matches sink: {matched_sinks[0].name}")
+                    self.pactl.set_default_sink(matched_sinks[0])
+                    break
+                else:
+                    logger.warn(f"no sink matched: {pactl_sink_regex}")
 
         on_change = gui_config_dir() / "on-output-profile-change"
         if on_change.exists():
@@ -317,16 +325,14 @@ def main(argv: Sequence[str] | None = None) -> int:
         help="Prints the screen state as known by the tool.",
     )
     group.add_argument(
-        "-l", "--list", action="store_true", help="Lists available profiles."
+        "--list", action="store_true", help="Lists available profiles."
     )
     group.add_argument(
-        "-d",
-        "--default",
+        "--default-profile",
         action="store_true",
         help="Apply the default profile given currently connected outputs.",
     )
     group.add_argument(
-        "-c",
         "--cycle-profile",
         action="store_true",
         help="Cycles between display profiles.",
@@ -337,13 +343,19 @@ def main(argv: Sequence[str] | None = None) -> int:
         help="Cycles the current primary output among active outputs.",
     )
     group.add_argument(
-        "-p",
+        "--cycle-pactl-sink",
+        action="store_true",
+        help=(
+            "Cycles the pactl sink among candidates in the profile,"
+            " or all if none are present."
+        ),
+    )
+    group.add_argument(
         "--profile",
         type=str,
         help="Sets the profile to the specified one.",
     )
     group.add_argument(
-        "-g",
         "--get-current-profile",
         action="store_true",
         help="Gets the current profile.",
@@ -382,8 +394,8 @@ def main(argv: Sequence[str] | None = None) -> int:
                 print(profile)
         elif args.get_current_profile:
             print(selector.current_profile)
-        else:
-            if args.default:
+        elif args.cycle_profile:
+            if args.default_profile:
                 next_profile = selector.default_profile
             elif args.cycle_profile:
                 next_profile = selector.next_valid_profile()
@@ -394,6 +406,8 @@ def main(argv: Sequence[str] | None = None) -> int:
                 selector.apply_profile(next_profile)
             else:
                 return 1
+        elif args.cycle_pactl_sink:
+            selector.cycle_pactl_sink()
     return 0
 
 
