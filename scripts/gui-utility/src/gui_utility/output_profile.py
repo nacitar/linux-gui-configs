@@ -413,20 +413,19 @@ def main(argv: Sequence[str] | None = None) -> int:
             print(selector.current_profile)
         elif args.cycle_primary:
             selector.cycle_primary_output()
-        elif args.cycle_profile:
+        elif args.cycle_pactl_sink:
+            selector.cycle_pactl_sink()
+        else:
             if args.default_profile:
                 next_profile = selector.default_profile
             elif args.cycle_profile:
                 next_profile = selector.next_valid_profile()
             elif args.profile:
                 next_profile = args.profile
-
             if next_profile:
                 selector.apply_profile(next_profile)
             else:
                 return 1
-        elif args.cycle_pactl_sink:
-            selector.cycle_pactl_sink()
     return 0
 
 
