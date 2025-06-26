@@ -62,6 +62,8 @@ Mod4 D :Exec discord
 Mod4 T :Exec kitty
 Mod4 B :Exec brave
 Mod4 S :Exec spotify-launcher
+
+Mod4 L :Exec xlock -mode noof -delay 7500
 # cycle between profiles
 Mod4 minus :Exec ns-gui-utility output-profile --cycle-profile
 Mod4 backslash :Exec ns-gui-utility output-profile --cycle-primary
