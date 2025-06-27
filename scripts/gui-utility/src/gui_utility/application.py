@@ -3,13 +3,14 @@ from __future__ import annotations
 import sys
 from typing import Callable, Sequence
 
-from . import output_profile, spotify_control
+from . import battery_monitor, output_profile, spotify_control
 
 
 def main(argv: Sequence[str] | None = None) -> int:
     main_lookup: dict[str, Callable[[Sequence[str] | None], int]] = {
         "output-profile": output_profile.main,
         "spotify-control": spotify_control.main,
+        "battery-monitor": battery_monitor.main,
     }
     if len(sys.argv) > 1:
         command = sys.argv[1]

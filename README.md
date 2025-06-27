@@ -10,3 +10,10 @@ Installation:
 git clone https://github.com/nacitar/linux-gui-configs.git "${HOME}/.gui"
 "${HOME}/.gui/install.sh"
 ```
+
+# Dependencies
+For the battery-monitor to function, certain system dependencies are required.
+For ArchLinux, install them via:
+```
+pacman -S gtk3 gobject-introspection libgdk-pixbuf2
+```
