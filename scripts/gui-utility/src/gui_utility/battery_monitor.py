@@ -5,12 +5,13 @@ import colorsys
 import logging
 import signal
 import types
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Callable, Sequence
+from typing import Sequence
 
 from PIL import Image, ImageDraw
 
+from .dbus import BusCtl
 from .gi import GdkPixbuf, GLib, Gtk
 from .log_utility import add_log_arguments, configure_logging
 
@@ -108,109 +109,166 @@ def clamp_percent(percent: int) -> int:
     return max(0, min(percent, 100))
 
 
-def power_gradient_color(percent: int) -> tuple[int, int, int]:
-    """
-    Interpolate from green to red in HSV color space and return an
-    tuple of RGB values.  100% => green (120°), 0% => red (0°), goes
-    through yellow and orange.
-    """
-    percent = clamp_percent(percent)
-    hue_deg = (percent / 100) * 120  # 0 = red, 60 = yellow, 120 = green
-    hue = hue_deg / 360  # convert to 0–1 for colorsys
-    r, g, b = colorsys.hsv_to_rgb(hue, 1.0, 1.0)
-    return (int(r * 255), int(g * 255), int(b * 255))
+@dataclass(kw_only=True)
+class IconStyle:
+    show_nub: bool
+    rounded: bool
+    border_color: str = "black"
+    size: int = 64
+    gap_units: int = 1
 
 
-def generate_battery_pixbuf(
-    percent: int,
-    size: int = 64,
-    gap_units: int = 1,
-    border_color: tuple[int, int, int] | str = (0, 0, 0),
-    rounded: bool = True,
-    show_nub: bool = True,
-) -> GdkPixbuf.Pixbuf:
-    percent = clamp_percent(percent)
-    img = Image.new("RGBA", (size, size), (255, 255, 255, 0))
-    draw = ImageDraw.Draw(img)
-
-    unit = size // 16
-    border_width = unit * 2
-    width = (size * 3) // 4
-    padding = (size - width) // 2
-
-    border = Rectangle(left=padding, right=padding + width, top=0, bottom=size)
-
-    if show_nub:
-        nub_width = border_width * 2
-        nub_padding = (size - nub_width) // 2
-        nub = Rectangle(
-            left=nub_padding,
-            right=nub_padding + nub_width,
-            top=0,
-            bottom=border_width * 3 // 2,  # overlaps actual border on purpose
-        )
-        nub.draw(
-            draw, fill=border_color, radius=border_width // 2 if rounded else 0
-        )
-        border = border.offset(top=border_width)
-
-    border.draw(
-        draw,
-        outline=border_color,
-        width=border_width,
-        radius=border_width * 3 // 2 if rounded else 0,
+@dataclass
+class BatteryMonitor:
+    style: IconStyle
+    sys_file: Path = field(
+        default_factory=lambda: Path("/sys/class/power_supply/BAT0/capacity")
     )
+    capacity: int = 0
+    busctl: BusCtl = field(default_factory=BusCtl)
 
-    inner_rectangle = border.offset_edges(border_width + gap_units * unit)
-    inner_rectangle.top += inner_rectangle.height * (100 - percent) // 100
-    inner_rectangle.draw(draw, fill=power_gradient_color(percent))
+    icon: Gtk.StatusIcon = field(init=False)
 
-    return pil_to_pixbuf(img)
+    @property
+    def category(self) -> int:
+        return self.capacity // 5
 
+    @property
+    def notification_category(self) -> int:
+        return self.capacity // 20
 
-def on_quit(menu_item: Gtk.MenuItem) -> None:
-    Gtk.main_quit()
+    def __post_init__(self) -> None:
+        icon = Gtk.StatusIcon()
+        # icon.set_from_icon_name("battery")
+        icon.set_visible(True)
+        icon.connect(
+            "popup-menu",
+            lambda icon, button, time: self._on_right_click(
+                icon, button, time
+            ),
+        )
+        self.icon = icon
+        self.update()
 
+    def _on_right_click(
+        self, icon: Gtk.StatusIcon, button: int, time: int
+    ) -> None:
+        menu = Gtk.Menu()
+        item_quit = Gtk.MenuItem(label="Quit")
+        item_quit.connect(
+            "activate", lambda menu_item: self._on_quit(menu_item)
+        )
+        menu.append(item_quit)
+        menu.show_all()
+        menu.popup_at_pointer(None)
 
-def on_ctrl_c(sig: int, frame: types.FrameType | None) -> None:
-    Gtk.main_quit()
+    @staticmethod
+    def quit() -> None:
+        Gtk.main_quit()
 
+    def _on_quit(self, menu_item: Gtk.MenuItem) -> None:
+        self.quit()
 
-def on_right_click(icon: Gtk.StatusIcon, button: int, time: int) -> None:
-    menu = Gtk.Menu()
+    def _on_sigint(self, sig: int, frame: types.FrameType | None) -> None:
+        self.quit()
 
-    item_quit = Gtk.MenuItem(label="Quit")
-    item_quit.connect("activate", on_quit)
-    menu.append(item_quit)
+    def run(self, update_ms: int = 60000) -> None:
+        GLib.timeout_add(update_ms, lambda: self.update())
+        Gtk.main()
 
-    menu.show_all()
-    menu.popup_at_pointer(None)
+    @classmethod
+    def power_gradient_color(cls, percent: int) -> tuple[int, int, int]:
+        """
+        Interpolate from green to red in HSV color space and return an
+        tuple of RGB values.  100% => green (120°), 0% => red (0°), goes
+        through yellow and orange.
+        """
+        percent = clamp_percent(percent)
+        hue_deg = (percent / 100) * 120  # 0 = red, 60 = yellow, 120 = green
+        hue = hue_deg / 360  # convert to 0–1 for colorsys
+        r, g, b = colorsys.hsv_to_rgb(hue, 1.0, 1.0)
+        return (int(r * 255), int(g * 255), int(b * 255))
 
+    def update(self) -> None:
+        old_capacity = self.capacity
+        old_category = self.category
+        old_notification_category = self.notification_category
+        self.capacity = clamp_percent(
+            int(self.sys_file.read_text(encoding="utf-8"))
+        )
+        can_notify = (
+            not old_capacity or max(old_capacity, self.capacity) != 100
+        )
+        if self.capacity != old_capacity:
+            logger.info(f"new battery capacity: {self.capacity}")
+            self.icon.set_tooltip_text(f"Battery: {self.capacity}%")
+            if self.category != old_category:
+                logger.info(f"new battery category: {self.category}")
+                self.icon.set_from_pixbuf(self._render_pixbuf(self.capacity))
+            if (
+                self.notification_category != old_notification_category
+                and can_notify
+            ):
+                self.busctl.notify(
+                    application_name="battery-monitor",
+                    icon="battery-full",
+                    title="Charge Status",
+                    body=f"Battery: {self.capacity}%",
+                )
 
-last_pixbuf: GdkPixbuf.Pixbuf | None = None
-last_capacity: int = -1
+        else:
+            logger.debug(f"unchanged battery capacity: {self.capacity}")
 
+    def _render_pixbuf(self, percent: int) -> GdkPixbuf.Pixbuf:
+        percent = clamp_percent(percent)
+        img = Image.new(
+            "RGBA", (self.style.size, self.style.size), (255, 255, 255, 0)
+        )
+        draw = ImageDraw.Draw(img)
 
-def update_battery_indicator(
-    icon: Gtk.StatusIcon, border_color: tuple[int, int, int] | str
-) -> bool:
-    global last_pixbuf, last_capacity
-    capacity = clamp_percent(
-        int(Path("/sys/class/power_supply/BAT0/capacity").read_text())
-    )
-    if capacity == last_capacity and last_pixbuf:
-        pixbuf = last_pixbuf
-    else:
-        pixbuf = generate_battery_pixbuf(capacity, border_color=border_color)
-        last_pixbuf = pixbuf
-        last_capacity = capacity
+        unit = self.style.size // 16
+        border_width = unit * 2
+        width = (self.style.size * 3) // 4
+        padding = (self.style.size - width) // 2
 
-    icon.set_from_pixbuf(pixbuf)
-    icon.set_tooltip_text(f"Battery: {capacity}%")
-    return True  # keep repeating
+        border = Rectangle(
+            left=padding, right=padding + width, top=0, bottom=self.style.size
+        )
 
+        if self.style.show_nub:
+            nub_width = border_width * 2
+            nub_padding = (self.style.size - nub_width) // 2
+            nub = Rectangle(
+                left=nub_padding,
+                right=nub_padding + nub_width,
+                top=0,
+                bottom=border_width
+                * 3
+                // 2,  # overlaps actual border on purpose
+            )
+            nub.draw(
+                draw,
+                fill=self.style.border_color,
+                radius=border_width // 2 if self.style.rounded else 0,
+            )
+            border = border.offset(top=border_width)
 
-CHECK_INTERVAL = 30000
+        border.draw(
+            draw,
+            outline=self.style.border_color,
+            width=border_width,
+            radius=border_width * 3 // 2 if self.style.rounded else 0,
+        )
+
+        inner_rectangle = border.offset_edges(
+            border_width + self.style.gap_units * unit
+        )
+        inner_rectangle.top += inner_rectangle.height * (100 - percent) // 100
+        inner_rectangle.draw(
+            draw, fill=BatteryMonitor.power_gradient_color(percent)
+        )
+
+        return pil_to_pixbuf(img)
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -219,15 +277,12 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = parser.parse_args(args=argv)
     configure_logging(args)
 
-    icon = Gtk.StatusIcon()
-    # icon.set_from_icon_name("battery")
-    icon.set_visible(True)
-    icon.connect("popup-menu", on_right_click)
-    signal.signal(signal.SIGINT, on_ctrl_c)
-    update_handler: Callable[[], bool] = lambda: update_battery_indicator(
-        icon, border_color=(211, 215, 207)
+    # TODO: add arguments to customize things, including the capacity source
+    monitor = BatteryMonitor(
+        style=IconStyle(
+            show_nub=True, rounded=True, border_color="rgb(211,215,207)"
+        )
     )
-    update_handler()
-    GLib.timeout_add(CHECK_INTERVAL, update_handler)
-    Gtk.main()
+    signal.signal(signal.SIGINT, monitor._on_sigint)
+    monitor.run(update_ms=30000)
     return 0
