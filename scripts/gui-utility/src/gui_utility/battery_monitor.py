@@ -135,9 +135,7 @@ class BatteryLevel(StrEnum):
 @dataclass
 class BatteryMonitor:
     style: IconStyle
-    battery_path: Path = field(
-        default_factory=lambda: Path("/sys/class/power_supply/BAT0")
-    )
+    battery_path: Path
     capacity: int = 0
     connected: bool = True
     busctl: BusCtl = field(default_factory=BusCtl)
@@ -226,7 +224,7 @@ class BatteryMonitor:
             (self.battery_path / "status").read_text(encoding="utf-8").strip()
         )
         self.connected = (
-            status == "Charging"
+            status in ["Charging", "Full"]
             or status == "Not charging"
             and self.capacity > 75
         )
@@ -269,7 +267,7 @@ class BatteryMonitor:
                 title=f"Battery Level - {level.name}",
                 body=state_text,
             )
-        return True
+        return True  # keep running
 
     def _render_pixbuf(
         self, percent: int, connected: bool
@@ -341,12 +339,13 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     # TODO: add arguments to customize things, including the capacity source
     monitor = BatteryMonitor(
+        battery_path=Path("/sys/class/power_supply/BAT0"),
         style=IconStyle(
             show_nub=True,
             rounded=True,
             connected_border_color="rgb(211,215,207)",
             disconnected_border_color="rgb(255,255,0)",
-        )
+        ),
     )
     signal.signal(signal.SIGINT, monitor._on_sigint)
     monitor.run(update_ms=5000)
