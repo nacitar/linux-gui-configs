@@ -35,6 +35,7 @@ export DISPLAY_SERVICE_LOG_DIR
 pushd "${DISPLAY_SERVICE_LOG_DIR}" &>/dev/null
 env >xenv
 command -v blueman-applet &>/dev/null && blueman-applet &>blueman-applet.log &
-command -v cbatticon &>/dev/null && cbatticon &>cbatticon.log &
+command -v ns-gui-utility &>/dev/null \
+    && ns-gui-utility battery-monitor &>battery-monitor.log &
 command -v steam &>/dev/null && steam -silent &>steam.log &
 popd &>/dev/null
