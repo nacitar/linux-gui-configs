@@ -6,6 +6,7 @@ import logging
 import signal
 import types
 from dataclasses import dataclass, field
+from enum import StrEnum
 from pathlib import Path
 from typing import Sequence
 
@@ -113,29 +114,47 @@ def clamp_percent(percent: int) -> int:
 class IconStyle:
     show_nub: bool
     rounded: bool
-    border_color: str = "black"
+    connected_border_color: str = "black"
+    disconnected_border_color: str = "yellow"
     size: int = 64
     gap_units: int = 1
+
+
+class BatteryLevel(StrEnum):
+    HIGH = "battery-full"
+    GOOD = "battery-good"
+    LOW = "battery-low"
+    CAUTION = "battery-caution"
+    # battery-empty
+
+    @property
+    def icon(self) -> str:
+        return self.value
 
 
 @dataclass
 class BatteryMonitor:
     style: IconStyle
-    sys_file: Path = field(
-        default_factory=lambda: Path("/sys/class/power_supply/BAT0/capacity")
+    battery_path: Path = field(
+        default_factory=lambda: Path("/sys/class/power_supply/BAT0")
     )
     capacity: int = 0
+    connected: bool = True
     busctl: BusCtl = field(default_factory=BusCtl)
 
     icon: Gtk.StatusIcon = field(init=False)
 
-    @property
-    def category(self) -> int:
+    def _get_render_category(self) -> int:
         return self.capacity // 5
 
-    @property
-    def notification_category(self) -> int:
-        return self.capacity // 20
+    def _get_level(self) -> BatteryLevel:
+        if self.capacity > 90:
+            return BatteryLevel.HIGH
+        if self.capacity > 50:
+            return BatteryLevel.GOOD
+        if self.capacity > 10:
+            return BatteryLevel.LOW
+        return BatteryLevel.CAUTION
 
     def __post_init__(self) -> None:
         icon = Gtk.StatusIcon()
@@ -189,37 +208,72 @@ class BatteryMonitor:
         r, g, b = colorsys.hsv_to_rgb(hue, 1.0, 1.0)
         return (int(r * 255), int(g * 255), int(b * 255))
 
-    def update(self) -> None:
+    def update(self) -> bool:
+        old_render_category = self._get_render_category()
+        old_level = self._get_level()
         old_capacity = self.capacity
-        old_category = self.category
-        old_notification_category = self.notification_category
         self.capacity = clamp_percent(
-            int(self.sys_file.read_text(encoding="utf-8"))
+            int(
+                (self.battery_path / "capacity")
+                .read_text(encoding="utf-8")
+                .strip()
+            )
         )
-        can_notify = (
-            not old_capacity or max(old_capacity, self.capacity) != 100
+        status = (
+            (self.battery_path / "status").read_text(encoding="utf-8").strip()
         )
+        render_category = self._get_render_category()
+        level = self._get_level()
+        old_connected = self.connected
+        self.connected = (
+            status == "Charging"
+            or status == "Not charging"
+            and self.capacity > 75
+        )
+        set_new_state = False
+        set_new_icon = False
+        send_notification = False
         if self.capacity != old_capacity:
             logger.info(f"new battery capacity: {self.capacity}")
-            self.icon.set_tooltip_text(f"Battery: {self.capacity}%")
-            if self.category != old_category:
-                logger.info(f"new battery category: {self.category}")
-                self.icon.set_from_pixbuf(self._render_pixbuf(self.capacity))
-            if (
-                self.notification_category != old_notification_category
-                and can_notify
+            set_new_state = True
+            if render_category != old_render_category:
+                logger.info(f"new battery render category: {render_category}")
+                set_new_icon = True
+            if level != old_level and (
+                not old_capacity or max(old_capacity, self.capacity) != 100
             ):
-                self.busctl.notify(
-                    application_name="battery-monitor",
-                    icon="battery-full",
-                    title="Charge Status",
-                    body=f"Battery: {self.capacity}%",
-                )
-
+                send_notification = True
         else:
             logger.debug(f"unchanged battery capacity: {self.capacity}")
+        if self.connected != old_connected:
+            logger.debug(f"charging state changed: {status}")
+            set_new_icon = True
+            set_new_state = True
+        if set_new_icon:
+            self.icon.set_from_pixbuf(
+                self._render_pixbuf(self.capacity, connected=self.connected)
+            )
+        state_text = "\n".join(
+            [
+                f"Charge: {self.capacity}%",
+                f"Plugged in: {"YES" if self.connected else "NO"}",
+            ]
+        )
+        if set_new_state:
+            self.icon.set_tooltip_text(state_text)
 
-    def _render_pixbuf(self, percent: int) -> GdkPixbuf.Pixbuf:
+        if send_notification:
+            self.busctl.notify(
+                application_name="battery-monitor",
+                icon=level.icon,
+                title=f"Battery Level - {level.name}",
+                body=state_text,
+            )
+        return True
+
+    def _render_pixbuf(
+        self, percent: int, connected: bool
+    ) -> GdkPixbuf.Pixbuf:
         percent = clamp_percent(percent)
         img = Image.new(
             "RGBA", (self.style.size, self.style.size), (255, 255, 255, 0)
@@ -248,14 +302,22 @@ class BatteryMonitor:
             )
             nub.draw(
                 draw,
-                fill=self.style.border_color,
+                fill=(
+                    self.style.connected_border_color
+                    if connected
+                    else self.style.disconnected_border_color
+                ),
                 radius=border_width // 2 if self.style.rounded else 0,
             )
             border = border.offset(top=border_width)
 
         border.draw(
             draw,
-            outline=self.style.border_color,
+            outline=(
+                self.style.connected_border_color
+                if connected
+                else self.style.disconnected_border_color
+            ),
             width=border_width,
             radius=border_width * 3 // 2 if self.style.rounded else 0,
         )
@@ -280,9 +342,12 @@ def main(argv: Sequence[str] | None = None) -> int:
     # TODO: add arguments to customize things, including the capacity source
     monitor = BatteryMonitor(
         style=IconStyle(
-            show_nub=True, rounded=True, border_color="rgb(211,215,207)"
+            show_nub=True,
+            rounded=True,
+            connected_border_color="rgb(211,215,207)",
+            disconnected_border_color="rgb(255,255,0)",
         )
     )
     signal.signal(signal.SIGINT, monitor._on_sigint)
-    monitor.run(update_ms=30000)
+    monitor.run(update_ms=5000)
     return 0
