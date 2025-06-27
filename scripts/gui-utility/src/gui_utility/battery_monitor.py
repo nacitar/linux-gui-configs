@@ -219,12 +219,12 @@ class BatteryMonitor:
                 .strip()
             )
         )
-        status = (
-            (self.battery_path / "status").read_text(encoding="utf-8").strip()
-        )
         render_category = self._get_render_category()
         level = self._get_level()
         old_connected = self.connected
+        status = (
+            (self.battery_path / "status").read_text(encoding="utf-8").strip()
+        )
         self.connected = (
             status == "Charging"
             or status == "Not charging"
