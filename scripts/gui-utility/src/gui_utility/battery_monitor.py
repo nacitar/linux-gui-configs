@@ -247,6 +247,7 @@ class BatteryMonitor:
             logger.debug(f"charging state changed: {status}")
             set_new_icon = True
             set_new_state = True
+            send_notification = True
         if set_new_icon:
             self.icon.set_from_pixbuf(
                 self._render_pixbuf(self.capacity, connected=self.connected)
