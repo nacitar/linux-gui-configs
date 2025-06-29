@@ -255,7 +255,7 @@ class BatteryMonitor:
         state_text = "\n".join(
             [
                 f"Charge: {self.capacity}%",
-                f"Plugged in: {"YES" if self.connected else "NO"}",
+                f"Power: {"dis" if not self.connected else ""}connected",
             ]
         )
         if set_new_state:
