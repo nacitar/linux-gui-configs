@@ -10,7 +10,8 @@ license = "Unlicense"
 requires-python = ">=3.11,<4.0"
 dependencies = [
     "pillow (>=11.2.1,<12.0.0)",
-    "pygobject (>=3.52.3,<4.0.0)"
+    "pygobject (>=3.52.3,<4.0.0)",
+    "evdev (>=1.9.2,<2.0.0)"
 ]
 
 [tool.poetry]
@@ -20,7 +21,7 @@ packages = [{include = "gui_utility", from = "src"}]
 black = "^25.1.0"
 flake8 = "^7.3.0"
 isort = "^6.0.1"
-mypy = "^1.16.1"
+mypy = "^1.17.0"
 pytest = "^8.4.1"
 
 [build-system]

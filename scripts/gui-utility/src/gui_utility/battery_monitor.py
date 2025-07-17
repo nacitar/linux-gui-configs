@@ -6,6 +6,7 @@ import logging
 import signal
 import types
 from dataclasses import dataclass, field
+from datetime import timedelta
 from enum import StrEnum
 from pathlib import Path
 from typing import Sequence
@@ -137,6 +138,7 @@ class BatteryMonitor:
     style: IconStyle
     battery_path: Path
     capacity: int = 0
+    remaining: timedelta = field(default_factory=lambda: timedelta(0))
     connected: bool = True
     busctl: BusCtl = field(default_factory=BusCtl)
 
@@ -206,16 +208,27 @@ class BatteryMonitor:
         r, g, b = colorsys.hsv_to_rgb(hue, 1.0, 1.0)
         return (int(r * 255), int(g * 255), int(b * 255))
 
+    def _get_time_remaining(self) -> timedelta:
+        energy_now = int(
+            (self.battery_path / "energy_now").read_text(encoding="utf-8")
+        )
+        power_now = int(
+            (self.battery_path / "power_now").read_text(encoding="utf-8")
+        )
+
+        if power_now == 0:
+            return timedelta(0)
+
+        hours = energy_now / power_now  # µWh / µW = hours
+        seconds = int(hours * 3600)
+        return timedelta(seconds=seconds)
+
     def update(self) -> bool:
         old_render_category = self._get_render_category()
         old_level = self._get_level()
         old_capacity = self.capacity
         self.capacity = clamp_percent(
-            int(
-                (self.battery_path / "capacity")
-                .read_text(encoding="utf-8")
-                .strip()
-            )
+            int((self.battery_path / "capacity").read_text(encoding="utf-8"))
         )
         render_category = self._get_render_category()
         level = self._get_level()
@@ -227,6 +240,12 @@ class BatteryMonitor:
             status in ["Charging", "Full"]
             or status == "Not charging"
             and self.capacity > 75
+        )
+        old_remaining = self.remaining
+        # truncate to the nearest minute, to both make invalidation easier and
+        # to just store the information we want anyway.
+        self.remaining = timedelta(
+            minutes=self._get_time_remaining().total_seconds() // 60
         )
         set_new_state = False
         set_new_icon = False
@@ -248,26 +267,33 @@ class BatteryMonitor:
             set_new_icon = True
             set_new_state = True
             send_notification = True
+        if self.remaining != old_remaining:
+            set_new_state = True
         if set_new_icon:
             self.icon.set_from_pixbuf(
                 self._render_pixbuf(self.capacity, connected=self.connected)
             )
-        state_text = "\n".join(
-            [
+        if set_new_state or send_notification:
+            state: list[str] = [
                 f"Charge: {self.capacity}%",
                 f"Power: {"dis" if not self.connected else ""}connected",
             ]
-        )
-        if set_new_state:
-            self.icon.set_tooltip_text(state_text)
-
-        if send_notification:
-            self.busctl.notify(
-                application_name="battery-monitor",
-                icon=level.icon,
-                title=f"Battery Level - {level.name}",
-                body=state_text,
-            )
+            if self.remaining:
+                total_minutes = int(self.remaining.total_seconds() // 60)
+                hours, minutes = divmod(total_minutes, 60)
+                state.append(
+                    f"Life: {f"{hours}h " if hours else ""}{minutes}m"
+                )
+            state_text = "\n".join(state)
+            if set_new_state:
+                self.icon.set_tooltip_text(state_text)
+            if send_notification:
+                self.busctl.notify(
+                    application_name="battery-monitor",
+                    icon=level.icon,
+                    title=f"Battery Level - {level.name}",
+                    body=state_text,
+                )
         return True  # keep running
 
     def _render_pixbuf(

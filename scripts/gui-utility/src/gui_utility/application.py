@@ -3,7 +3,12 @@ from __future__ import annotations
 import sys
 from typing import Callable, Sequence
 
-from . import battery_monitor, output_profile, spotify_control
+from . import (
+    battery_monitor,
+    controller_overlay,
+    output_profile,
+    spotify_control,
+)
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -11,6 +16,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         "output-profile": output_profile.main,
         "spotify-control": spotify_control.main,
         "battery-monitor": battery_monitor.main,
+        "controller-overlay": controller_overlay.main,
     }
     if len(sys.argv) > 1:
         command = sys.argv[1]
