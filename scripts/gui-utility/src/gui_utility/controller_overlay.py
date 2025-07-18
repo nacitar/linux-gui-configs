@@ -75,11 +75,14 @@ class Input(Generic[T]):
 
 
 class GamepadMonitor(Protocol[T]):
-    def sync_handler(self, controller: Controller[T]) -> bool: ...
+    def on_start(
+        self, controller: Controller[T], inputs: list[Input[T]]
+    ) -> None: ...
+    def on_sync(self, controller: Controller[T]) -> None: ...
 
-    def update_handler(
+    def on_update(
         self, controller: Controller[T], input: Input[T], value: int
-    ) -> bool: ...
+    ) -> None: ...
 
 
 @dataclass(kw_only=True)
@@ -163,6 +166,14 @@ class Controller(Generic[T]):
 
     def read_loop(self, monitor: GamepadMonitor[T]) -> None:
         self._last_raw_value.clear()
+        monitor.on_start(
+            self,
+            [
+                input
+                for code_to_input in self.inputs.values()
+                for input in code_to_input.values()
+            ],
+        )
         updated = False
         for event in self.device.read_loop():
             if event.type in (ecodes.EV_KEY, ecodes.EV_ABS):
@@ -181,8 +192,9 @@ class Controller(Generic[T]):
                             continue
                     event_type_section[event.code] = event.value
                     updated = True
-                    if not monitor.update_handler(self, input, event.value):
-                        break
+                    monitor.on_update(
+                        self, input, input.range.clamp(event.value)
+                    )
                 else:
                     logger.warning(
                         f"Skipping unknown input: {event.type}, {event.code}"
@@ -190,8 +202,7 @@ class Controller(Generic[T]):
             elif event.type == ecodes.EV_SYN:
                 if updated:
                     updated = False
-                    if not monitor.sync_handler(self):
-                        break
+                    monitor.on_sync(self)
 
 
 def find_controller(
@@ -252,7 +263,7 @@ XINPUT_PROFILE = Profile[GamepadInput](
 )
 
 
-@dataclass
+@dataclass(kw_only=True)
 class GamepadInputState:
     pressed: bool
     value: float
@@ -267,29 +278,35 @@ class GamepadInputState:
 class TerminalGamepadMonitor:
     state: dict[GamepadInput, GamepadInputState] = field(default_factory=dict)
 
-    def sync_handler(self, controller: Controller[GamepadInput]) -> bool:
-        print(f"SYN: {self}")
-        return True
+    def on_start(
+        self,
+        controller: Controller[GamepadInput],
+        inputs: list[Input[GamepadInput]],
+    ) -> None:
+        logger.info(f"START: initializing {len(inputs)} inputs.")
+        self.state = {
+            input.identifier.user: GamepadInputState(pressed=False, value=0.0)
+            for input in inputs
+            if input.identifier.user
+        }
+        print(f"INIT: {self}")
 
-    def update_handler(
+    def on_sync(self, controller: Controller[GamepadInput]) -> None:
+        print(f"SYNC: {self}")
+
+    def on_update(
         self,
         controller: Controller[GamepadInput],
         input: Input[GamepadInput],
         value: int,
-    ) -> bool:
+    ) -> None:
         if input.identifier.user:
-            value = input.range.clamp(value)
-            # not using setdefault to avoid constructing GamepadInputState
-            input_state = self.state.get(input.identifier.user)
-            if not input_state:
-                input_state = GamepadInputState(pressed=False, value=0)
-                self.state[input.identifier.user] = input_state
+            input_state = self.state[input.identifier.user]
             input_state.pressed = input.range.is_pressed(value)
             input_state.value = input.range.as_percentage(value)
             logger.debug(f"Update: {input.identifier.user} = {value}")
         else:
             logger.warning(f"UNHANDLED: {input.identifier.internal} = {value}")
-        return True
 
     def __repr__(self) -> str:
         return " ".join(
