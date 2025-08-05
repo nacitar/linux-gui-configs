@@ -10,6 +10,7 @@ from typing import Any, Generic, Optional, Protocol, Sequence, TypeVar
 from evdev import InputDevice, ecodes, list_devices
 
 from .log_utility import add_log_arguments, configure_logging
+from .websocket_server import WebSocketBroadcaster
 
 logger = logging.getLogger(__name__)
 
@@ -263,20 +264,10 @@ XINPUT_PROFILE = Profile[GamepadInput](
 )
 
 
-@dataclass(kw_only=True)
-class GamepadInputState:
-    pressed: bool
-    value: float
-
-    def __str__(self) -> str:
-        if self.pressed:
-            return f"_{self.value}_"
-        return str(self.value)
-
-
 @dataclass
 class TerminalGamepadMonitor:
-    state: dict[GamepadInput, GamepadInputState] = field(default_factory=dict)
+    websocket_broadcaster: WebSocketBroadcaster | None = None
+    state: dict[str, float] = field(default_factory=dict)
 
     def on_start(
         self,
@@ -285,14 +276,19 @@ class TerminalGamepadMonitor:
     ) -> None:
         logger.info(f"START: initializing {len(inputs)} inputs.")
         self.state = {
-            input.identifier.user: GamepadInputState(pressed=False, value=0.0)
+            input.identifier.user.name: 0.0  # NOTE: storing name not enum
             for input in inputs
             if input.identifier.user
         }
-        print(f"INIT: {self}")
+        self.broadcast()
 
     def on_sync(self, controller: Controller[GamepadInput]) -> None:
-        print(f"SYNC: {self}")
+        self.broadcast()
+
+    def broadcast(self) -> None:
+        print(f"STATE: {self}")
+        if self.websocket_broadcaster:
+            self.websocket_broadcaster.send_state(self.state)
 
     def on_update(
         self,
@@ -301,16 +297,15 @@ class TerminalGamepadMonitor:
         value: int,
     ) -> None:
         if input.identifier.user:
-            input_state = self.state[input.identifier.user]
-            input_state.pressed = input.range.is_pressed(value)
-            input_state.value = input.range.as_percentage(value)
-            logger.debug(f"Update: {input.identifier.user} = {value}")
+            name = input.identifier.user.name  # NOTE: storing name not enum
+            logger.debug(f"Update: {name} = {value}")
+            self.state[name] = input.range.as_percentage(value)
         else:
             logger.warning(f"UNHANDLED: {input.identifier.internal} = {value}")
 
     def __repr__(self) -> str:
         return " ".join(
-            [f"{input.name}={value}" for input, value in self.state.items()]
+            f"{name}={value}" for name, value in self.state.items()
         )
 
 
@@ -329,7 +324,13 @@ def main(argv: Sequence[str] | None = None) -> int:
     print(f"Using device: {dev.path} ({dev.name})")
     controller = Controller(device=dev, profile=XINPUT_PROFILE)
 
-    monitor = TerminalGamepadMonitor()
+    websocket_broadcaster = WebSocketBroadcaster(
+        8765, path="/gamepad-overlay", banner="gamepad-overlay"
+    )
+
+    monitor = TerminalGamepadMonitor(
+        websocket_broadcaster=websocket_broadcaster
+    )
     try:
         controller.read_loop(monitor)
     except KeyboardInterrupt:

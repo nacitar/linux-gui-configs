@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>WebSocket Debug Client</title>
+  <style>
+    body {
+      font-family: monospace;
+      background: black;
+    }
+    #status {
+      color: green;
+    }
+    #json {
+      color: yellow;
+      white-space: pre-wrap;
+    }
+  </style>
+</head>
+<body>
+  <div id="status">Connecting…</div>
+  <div id="json">{}</div>
+  <script>
+    const WS_URL = "ws://localhost:8765/gamepad-overlay";
+    const status = document.getElementById("status");
+    const jsonEl = document.getElementById("json");
+
+    let retryDelay = 1000;
+    const maxDelay = 10000;
+
+    function connect() {
+      const ws = new WebSocket(WS_URL);
+      let firstMessage = true;
+
+      ws.onopen = () => {
+        status.textContent = "Connected: (awaiting banner)";
+        status.style.color = "green";
+        retryDelay = 1000;
+      };
+
+      ws.onmessage = event => {
+        if (firstMessage) {
+          status.textContent = `Connected: ${event.data}`;
+          firstMessage = false;
+          return;
+        }
+
+        try {
+          const obj = JSON.parse(event.data);
+          jsonEl.textContent = JSON.stringify(obj, null, 2);
+        } catch {
+          jsonEl.textContent = event.data;
+        }
+      };
+
+      ws.onclose = () => {
+        jsonEl.textContent = "{}"
+        status.textContent = `Disconnected. Reconnecting in ${retryDelay / 1000}s…`;
+        status.style.color = "red";
+        setTimeout(connect, retryDelay);
+        retryDelay = Math.min(retryDelay * 2, maxDelay);
+      };
+
+      ws.onerror = err => {
+        console.error("[error]", err);
+        ws.close();
+      };
+    }
+
+    connect();
+  </script>
+</body>
+</html>
