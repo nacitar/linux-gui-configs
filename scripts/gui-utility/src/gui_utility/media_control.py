@@ -12,12 +12,18 @@ logger = logging.getLogger(__name__)
 
 
 # TODO: parsing of Metadata property.
-@dataclass
-class Spotify:
-    service: str = "org.mpris.MediaPlayer2.spotify"
+@dataclass(kw_only=True)
+class MediaControl:
+    service: str
     object_path: str = "/org/mpris/MediaPlayer2"
     interface: str = "org.mpris.MediaPlayer2.Player"
     busctl: BusCtl = field(default_factory=lambda: BusCtl())
+
+    def __post_init__(self) -> None:
+        if not self.service:
+            raise ValueError("service must be specified")
+        if not self.service.startswith("org.mpris.MediaPlayer2."):
+            self.service = f"org.mpris.MediaPlayer2.{self.service}"
 
     def get_properties(self, properties: list[str]) -> list[DBusValue]:
         return self.busctl.get_properties(
@@ -106,9 +112,12 @@ class Spotify:
 
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
-        description="Uses dbus to control spotify."
+        description="Uses dbus to control media players."
     )
     add_log_arguments(parser)
+    parser.add_argument(
+        "service", help="the name of the media player's service"
+    )
     volume_group = parser.add_mutually_exclusive_group()
     volume_group.add_argument(
         "--volume-set",
@@ -145,21 +154,21 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
     args = parser.parse_args(args=argv)
     configure_logging(args)
-    spotify = Spotify()
+    media_control = MediaControl(service=args.service)
     if args.volume_set is not None:
-        spotify.volume_set(args.volume_set)
+        media_control.volume_set(args.volume_set)
     if args.volume_adjust is not None:
-        spotify.volume_adjust(args.volume_adjust)
+        media_control.volume_adjust(args.volume_adjust)
     if args.play:
-        spotify.play()
+        media_control.play()
     if args.pause:
-        spotify.pause()
+        media_control.pause()
     if args.play_toggle:
-        spotify.play_toggle()
+        media_control.play_toggle()
     if args.stop:
-        spotify.stop()
+        media_control.stop()
     if args.next:
-        spotify.next()
+        media_control.next()
     if args.previous:
-        spotify.previous()
+        media_control.previous()
     return 0

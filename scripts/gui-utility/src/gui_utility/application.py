@@ -3,13 +3,13 @@ from __future__ import annotations
 import sys
 from typing import Callable, Sequence
 
-from . import battery_monitor, gamepad_overlay, output_profile, spotify_control
+from . import battery_monitor, gamepad_overlay, media_control, output_profile
 
 
 def main(argv: Sequence[str] | None = None) -> int:
     main_lookup: dict[str, Callable[[Sequence[str] | None], int]] = {
         "output-profile": output_profile.main,
-        "spotify-control": spotify_control.main,
+        "media-control": media_control.main,
         "battery-monitor": battery_monitor.main,
         "gamepad-overlay": gamepad_overlay.main,
     }
