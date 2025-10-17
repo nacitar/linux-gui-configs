@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Hybrid D‑pad + Left/Right Sticks (Themes + Proper Constraint)</title>
+<style>
+  body {
+    background: #111;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 100vh;
+  }
+  svg { width: 760px; height: 360px; }
+</style>
+</head>
+<body>
+  <svg viewBox="0 0 760 340" id="overlayRoot">
+    <defs>
+      <!-- Thin black stroke with thin white outer stroke -->
+      <filter id="dualStroke" color-interpolation-filters="sRGB">
+        <feMorphology in="SourceAlpha" operator="dilate" radius="1" result="outer"/>
+        <feFlood flood-color="rgb(255,255,255)" result="whiteColor"/>
+        <feComposite in="whiteColor" in2="outer" operator="in" result="whiteStroke"/>
+        <feMerge>
+          <feMergeNode in="whiteStroke"/>
+          <feMergeNode in="SourceGraphic"/>
+        </feMerge>
+      </filter>
+    </defs>
+  </svg>
+
+  <script>
+    const ns = 'http://www.w3.org/2000/svg';
+
+    // ===== Themes (Xbox + SNES) =====
+    const themes = {
+      xbox: {
+        faceColors: { // ABXY canonical colors
+          A: { idle: '#1f4f20', pressed: '#3fcf3f' },
+          B: { idle: '#5f1f1f', pressed: '#ff3333' },
+          X: { idle: '#1f1f5f', pressed: '#3377ff' },
+          Y: { idle: '#5f5f1f', pressed: '#ffff33' }
+        },
+        dpad:   '#2c2f33',
+        stick:  '#2c2f33',
+        area:   'black',
+      },
+      snes: {
+        faceColors: { // Multicolor SNES-style
+          A: { idle: '#4f2020', pressed: '#ff5555' },
+          B: { idle: '#4f4f20', pressed: '#ffff55' },
+          X: { idle: '#20204f', pressed: '#5555ff' },
+          Y: { idle: '#204f20', pressed: '#55ff55' }
+        },
+        dpad:   '#2c2f33',
+        stick:  '#2c2f33',
+        area:   'black',
+      }
+    };
+
+    // ===== Geometry helpers =====
+    class Rect {
+      constructor({ x, y, width, height, rx = 0, ry = 0, fill = '#ccc', stroke = 'black', strokeWidth = 1, filter = 'url(#dualStroke)' }) {
+        this._x = x; this._y = y; this._w = width; this._h = height;
+        this._rx = rx; this._ry = ry; this.fill = fill; this.stroke = stroke; this.strokeWidth = strokeWidth; this.filter = filter;
+      }
+      static fromCenter({ cx, cy, width, height, rx = 0, ry = 0, fill, stroke = 'black', strokeWidth = 1, filter = 'url(#dualStroke)' }) {
+        return new Rect({ x: cx - width / 2, y: cy - height / 2, width, height, rx, ry, fill, stroke, strokeWidth, filter });
+      }
+      get cx() { return this._x + this._w / 2; }
+      get cy() { return this._y + this._h / 2; }
+      get left() { return this._x; }
+      get top() { return this._y; }
+      get right() { return this._x + this._w; }
+      get bottom() { return this._y + this._h; }
+      get width() { return this._w; }
+      get height() { return this._h; }
+      toSVG() {
+        const el = document.createElementNS(ns, 'rect');
+        el.setAttribute('x', this._x);
+        el.setAttribute('y', this._y);
+        el.setAttribute('width', this._w);
+        el.setAttribute('height', this._h);
+        el.setAttribute('rx', this._rx);
+        el.setAttribute('ry', this._ry);
+        el.setAttribute('fill', this.fill);
+        el.setAttribute('stroke', this.stroke);
+        el.setAttribute('stroke-width', this.strokeWidth);
+        el.setAttribute('filter', this.filter);
+        this.el = el; return el;
+      }
+      attach(parent, insertAtBottom = false) {
+        const el = this.toSVG();
+        if (insertAtBottom && parent.firstChild) parent.insertBefore(el, parent.firstChild);
+        else parent.appendChild(el);
+        return this;
+      }
+      setFill(fill) { this.fill = fill; if (this.el) this.el.setAttribute('fill', fill); return this; }
+      setPos(x, y) { this._x = x; this._y = y; if (this.el) { this.el.setAttribute('x', x); this.el.setAttribute('y', y); } return this; }
+    }
+
+    class Circle {
+      constructor({ cx, cy, r, fill = '#ccc', stroke = 'black', strokeWidth = 1, filter = 'url(#dualStroke)' }) {
+        this._cx = cx; this._cy = cy; this._r = r; this.fill = fill; this.stroke = stroke; this.strokeWidth = strokeWidth; this.filter = filter;
+      }
+      get cx(){return this._cx;} get cy(){return this._cy;} get r(){return this._r;}
+      toSVG() {
+        const el = document.createElementNS(ns, 'circle');
+        el.setAttribute('cx', this._cx);
+        el.setAttribute('cy', this._cy);
+        el.setAttribute('r', this._r);
+        el.setAttribute('fill', this.fill);
+        el.setAttribute('stroke', this.stroke);
+        el.setAttribute('stroke-width', this.strokeWidth);
+        el.setAttribute('filter', this.filter);
+        this.el = el; return el;
+      }
+      attach(parent) { parent.appendChild(this.toSVG()); return this; }
+      setCenter(cx, cy) { this._cx = cx; this._cy = cy; if (this.el) { this.el.setAttribute('cx', cx); this.el.setAttribute('cy', cy); } return this; }
+      setFill(fill) { this.fill = fill; if (this.el) this.el.setAttribute('fill', fill); return this; }
+    }
+
+    // ===== Pad =====
+    class Pad {
+      constructor({ svg, name, cx, cy, includeDpad = false, includeFace = false, includeStick = true, innerSize, armLength, buttonShape = 'square', theme, innerGap = 0, autoOverlap = true }) {
+        this.svg = svg; this.name = name; this.cx = cx; this.cy = cy;
+        this.includeDpad = includeDpad; this.includeFace = includeFace; this.includeStick = includeStick;
+        this.innerSize = innerSize; this.armLength = armLength; this.buttonShape = buttonShape;
+        this.theme = theme; this.innerGap = innerGap; this.autoOverlap = autoOverlap;
+        this.group = document.createElementNS(ns, 'g'); this.group.setAttribute('data-section', name); svg.appendChild(this.group);
+        this.rects = {}; this.cornerButtons = {};
+        this._build(); this._updateExtents();
+      }
+
+      _niceGap(){ return 6; }
+
+      _faceColorFor(label, pressed){
+        // Map pad labels to ABXY
+        const map = { top:'Y', right:'B', bottom:'A', left:'X' };
+        const key = map[label];
+        const pal = (this.theme.faceColors && key) ? this.theme.faceColors[key] : null;
+        if (!pal) return pressed ? '#3f8cff' : this.theme.dpad; // fallback
+        return pressed ? pal.pressed : pal.idle;
+      }
+
+      _build(){
+        const { cx, cy, innerSize:t, armLength, buttonShape } = this;
+        const rArea = (t/2) * Math.SQRT2; // circle through inner corners
+        const innerOffset = t/2;          // from center to inner edge along axis
+        const NICE_BASE_GAP = 1;
+        const computedGap = this.innerGap != null ? (this.autoOverlap ? 0 : NICE_BASE_GAP) + this.innerGap : (this.autoOverlap ? 0 : NICE_BASE_GAP);
+
+        // D-pad or Face cluster
+        if (this.includeDpad || this.includeFace){
+          const labels = this.includeDpad ? ['up','down','left','right'] : ['top','bottom','left','right'];
+          const baseFill = this.includeDpad ? this.theme.dpad : this.theme.dpad; // will recolor faces per-button
+          const wV=t, hV=armLength, wH=armLength, hH=t;
+          const rxy = (buttonShape==='circle')? armLength/2 : (buttonShape==='rounded'? 8:0);
+
+          const up    = new Rect({ x: cx - wV/2, y: cy - innerOffset - hV - computedGap, width: wV, height: hV, rx:rxy, ry:rxy, fill: baseFill }).attach(this.group);
+          const down  = new Rect({ x: cx - wV/2, y: cy + innerOffset + computedGap, width: wV, height: hV, rx:rxy, ry:rxy, fill: baseFill }).attach(this.group);
+          const left  = new Rect({ x: cx - innerOffset - wH - computedGap, y: cy - hH/2, width: wH, height: hH, rx:rxy, ry:rxy, fill: baseFill }).attach(this.group);
+          const right = new Rect({ x: cx + innerOffset + computedGap, y: cy - hH/2, width: wH, height: hH, rx:rxy, ry:rxy, fill: baseFill }).attach(this.group);
+
+          this.rects[labels[0]]=up; this.rects[labels[1]]=down; this.rects[labels[2]]=left; this.rects[labels[3]]=right;
+        }
+
+        // Stick
+        if (this.includeStick){
+          const stickR = rArea * 0.60;
+          const gripR  = stickR * 0.70;
+          const stickGroup = document.createElementNS(ns,'g'); this.group.appendChild(stickGroup);
+          this.area  = new Circle({ cx, cy, r:rArea,  fill: this.theme.area }).attach(stickGroup);
+          this.stick = new Circle({ cx, cy, r:stickR, fill: this.theme.stick }).attach(stickGroup);
+          this.grip  = new Circle({ cx, cy, r:gripR,  fill: this.theme.stick }).attach(stickGroup);
+          this.radii = { area:rArea, stick:stickR };
+        }
+
+        this.state = { stick: { x:0, y:0, pressed:false }, buttons:{} };
+      }
+
+      _updateExtents(){
+        const rects = Object.values(this.rects);
+        if (!rects.length){ this.left=this.right=this.cx; this.top=this.bottom=this.cy; this.width=this.height=0; this.centerX=this.cx; this.centerY=this.cy; return; }
+        this.left = Math.min(...rects.map(r=>r.left));
+        this.top  = Math.min(...rects.map(r=>r.top));
+        this.right= Math.max(...rects.map(r=>r.right));
+        this.bottom=Math.max(...rects.map(r=>r.bottom));
+        this.width=this.right-this.left; this.height=this.bottom-this.top;
+        this.centerX=(this.left+this.right)/2; this.centerY=(this.top+this.bottom)/2;
+      }
+
+      addStartSelect(startSizeRef){
+        // Start: between face-top and face-left (right pad)
+        const gap = 6; const top = this.rects.top, left = this.rects.left;
+        if (top && left){
+          const outerLeft = left.left; const outerTop = top.top;
+          const innerRight = top.left - gap; const innerBottom = left.top - gap;
+          const w = Math.max(0, innerRight - outerLeft);
+          const h = Math.max(0, innerBottom - outerTop);
+          this.startRect = new Rect({ x: outerLeft, y: outerTop, width: w, height: h, rx:6, ry:6, fill: this.theme.dpad }).attach(this.svg, true);
+          // Select size should mirror Start
+          this.startW = w; this.startH = h;
+        }
+        // Select: top-right gap of LEFT pad (call on left pad with a size reference)
+        if (startSizeRef && this.rects.up && this.rects.right){
+          const gap = 6; const up = this.rects.up; const right = this.rects.right;
+          const w = startSizeRef.w, h = startSizeRef.h;
+          const x = up.right + gap; const y = right.top - gap - h;
+          this.selectRect = new Rect({ x, y, width:w, height:h, rx:6, ry:6, fill: this.theme.dpad }).attach(this.svg, true);
+        }
+      }
+
+      addCornerButtons(){
+        const g=6; const up=this.rects.up||this.rects.top; const down=this.rects.down||this.rects.bottom; const left=this.rects.left; const right=this.rects.right; const f=this.theme.dpad; const rx=6, ry=6;
+        const makeTopLeft=(V,H)=> new Rect({ x:H.left, y:V.top, width: V.left - H.left - g, height: H.top - V.top - g, rx, ry, fill:f }).attach(this.svg,true);
+        const makeBottomLeft=(V,H)=> new Rect({ x:H.left, y:H.bottom + g, width: V.left - H.left - g, height: V.bottom - H.bottom - g, rx, ry, fill:f }).attach(this.svg,true);
+        const makeTopRight=(V,H)=> new Rect({ x: V.right + g, y: V.top, width: H.right - V.right - g, height: H.top - V.top - g, rx, ry, fill:f }).attach(this.svg,true);
+        const makeBottomRight=(V,H)=> new Rect({ x: V.right + g, y: H.bottom + g, width: H.right - V.right - g, height: V.bottom - H.bottom - g, rx, ry, fill:f }).attach(this.svg,true);
+        if (this.name==='left'){ if (up&&left) this.cornerButtons.LB = makeTopLeft(up,left); if (down&&left) this.cornerButtons.LT = makeBottomLeft(down,left); }
+        if (this.name==='right'){ if (up&&right) this.cornerButtons.RB = makeTopRight(up,right); if (down&&right) this.cornerButtons.RT = makeBottomRight(down,right); }
+      }
+
+      setStick({ x, y, pressed }){
+        // x,y are normalized [-1,1]
+        if (typeof x==='number') this.state.stick.x = Math.max(-1, Math.min(1, x));
+        if (typeof y==='number') this.state.stick.y = Math.max(-1, Math.min(1, y));
+        if (typeof pressed==='boolean') this.state.stick.pressed = pressed;
+        if (!this.area || !this.stick) return;
+        const rA = this.radii.area, rS = this.radii.stick;
+        let dx = this.state.stick.x * rA; let dy = this.state.stick.y * rA;
+        // Proper constraint: allow ~half of the stick to protrude beyond area
+        const dist = Math.hypot(dx, dy), max = Math.max(0, rA - (rS * 0.5) - 0.5);
+        if (dist > max){ const s = max / dist; dx*=s; dy*=s; }
+        const fill = this.state.stick.pressed ? '#3f8cff' : this.theme.stick;
+        this.stick.setCenter(this.cx + dx, this.cy - dy).setFill(fill);
+        this.grip .setCenter(this.cx + dx, this.cy - dy).setFill(fill);
+      }
+
+      setPressed(map){
+        for (const k in map) this.state.buttons[k] = !!map[k];
+        // Dpad
+        ['up','down','left','right'].forEach(k=>{
+          if (this.rects[k]) this.rects[k].setFill(this.state.buttons[k] ? '#3f8cff' : this.theme.dpad);
+        });
+        // Face (right pad uses ABXY palette; left stays neutral like original)
+        if (['top','bottom','left','right'].some(k=>this.rects[k])){
+          if (this.name === 'right') {
+            ['top','bottom','left','right'].forEach(k=>{
+              if (this.rects[k]) this.rects[k].setFill(this._faceColorFor(k, !!this.state.buttons[k]));
+            });
+          } else {
+            ['top','bottom','left','right'].forEach(k=>{
+              if (this.rects[k]) this.rects[k].setFill(this.state.buttons[k] ? '#3f8cff' : this.theme.dpad);
+            });
+          }
+        }
+        // Corners and start/select
+        for (const k in this.cornerButtons){
+          const pressed = !!this.state.buttons[k];
+          this.cornerButtons[k].setFill(pressed ? '#3f8cff' : this.theme.dpad);
+        }
+        if (this.startRect)  this.startRect.setFill(this.state.buttons.start ? '#3f8cff' : this.theme.dpad);
+        if (this.selectRect) this.selectRect.setFill(this.state.buttons.select? '#3f8cff' : this.theme.dpad);
+      }
+    }
+
+    // ===== Build overlay =====
+    const svg = document.getElementById('overlayRoot');
+    const activeTheme = themes.xbox; // swap to themes.snes when you want SNES colors on the right
+
+    const leftPad = new Pad({ svg, name:'left',  cx:160, cy:170, includeDpad:true, includeStick:true, innerSize:30, armLength:30, buttonShape:'square', theme: activeTheme, autoOverlap:true, innerGap:0 });
+    leftPad.addCornerButtons(); leftPad._updateExtents();
+
+    const overlayGap = 6; // small gap between pads using measured extents
+    const rightCx = leftPad.right + overlayGap + (leftPad.width/2);
+    const rightPad = new Pad({ svg, name:'right', cx:rightCx, cy:leftPad.centerY, includeFace:true, includeStick:true, innerSize:30, armLength:30, buttonShape:'circle', theme: activeTheme, autoOverlap:true, innerGap:0 });
+    rightPad.addCornerButtons();
+
+    // Start (right inner) and Select (left inner) restored
+    rightPad.addStartSelect();
+    leftPad.addStartSelect({ w: rightPad.startW, h: rightPad.startH });
+
+    // ===== Demo animation (NEVER REMOVE) =====
+    let t=0; let startHold=0, selectHold=0, lbHold=0, ltHold=0, rbHold=0, rtHold=0;
+    setInterval(()=>{
+      t += 0.025;
+      const x1 = Math.cos(t) * 0.9;
+      const y1 = Math.sin(t*1.3) * 0.9;
+      const x2 = Math.sin(t*0.9) * 0.8;
+      const y2 = Math.cos(t*1.1) * 0.8;
+
+      leftPad.setStick({ x:x1, y:y1, pressed: Math.sin(t*3) > 0.9 });
+      rightPad.setStick({ x:x2, y:y2, pressed: Math.cos(t*2.2) > 0.9 });
+
+      leftPad.setPressed({ up:y1>0.55, down:y1<-0.55, left:x1<-0.55, right:x1>0.55 });
+      rightPad.setPressed({ top:y2>0.45, bottom:y2<-0.45, left:x2<-0.45, right:x2>0.45 });
+
+      // Start/Select demo holds
+      if (startHold<=0 && Math.random()>0.985) startHold=22; if (startHold>0) startHold--; rightPad.setPressed({ start: startHold>0 });
+      if (selectHold<=0&& Math.random()>0.985) selectHold=22; if (selectHold>0) selectHold--; leftPad.setPressed({ select: selectHold>0 });
+
+      // Corner buttons demo holds
+      if (lbHold<=0 && Math.random()>0.99) lbHold=18; if(lbHold>0) lbHold--; leftPad.setPressed({ LB: lbHold>0 });
+      if (ltHold<=0 && Math.random()>0.99) ltHold=18; if(ltHold>0) ltHold--; leftPad.setPressed({ LT: ltHold>0 });
+      if (rbHold<=0 && Math.random()>0.99) rbHold=18; if(rbHold>0) rbHold--; rightPad.setPressed({ RB: rbHold>0 });
+      if (rtHold<=0 && Math.random()>0.99) rtHold=18; if(rtHold>0) rtHold--; rightPad.setPressed({ RT: rtHold>0 });
+    }, 33);
+  </script>
+</body>
+</html>
