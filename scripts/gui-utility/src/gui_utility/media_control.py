@@ -105,6 +105,9 @@ class MediaControl:
         self.volume_set(volume)
         return volume
 
+    def seek(self, *, microseconds: int) -> None:
+        self.call("Seek", [DBusValue.from_int(microseconds, bits_64=True)])
+
     def play_toggle(self) -> None:
         self.call("PlayPause")
 
@@ -171,6 +174,12 @@ def main(argv: Sequence[str] | None = None) -> int:
         action="store_true",
         help="Return to start of current stream or to previous stream.",
     )
+    operation_group.add_argument(
+        "--seek-ahead", action="store_true", help="Seeks ahead 5 seconds"
+    )
+    operation_group.add_argument(
+        "--seek-back", action="store_true", help="Seeks back 5 seconds"
+    )
     args = parser.parse_args(args=argv)
     configure_logging(args)
     media_control = MediaControl(services=args.services)
@@ -190,4 +199,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         media_control.next()
     if args.previous:
         media_control.previous()
+    FIVE_SECONDS = 5000000  # in microseconds; chromium only seeks 5s anyway.
+    if args.seek_ahead:
+        media_control.seek(microseconds=FIVE_SECONDS)
+    if args.seek_back:
+        media_control.seek(microseconds=-FIVE_SECONDS)
     return 0

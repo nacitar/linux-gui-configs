@@ -75,6 +75,8 @@ XF86AudioLowerVolume :Exec amixer sset Master 2%-
 XF86AudioMute :Exec amixer sset Master toggle
 Mod1 XF86AudioRaiseVolume :Exec ns-gui-utility media-control spotify vlc brave.* --volume-adjust 2
 Mod1 XF86AudioLowerVolume :Exec ns-gui-utility media-control spotify vlc brave.* --volume-adjust -2
+Mod1 XF86AudioPrev :Exec ns-gui-utility media-control spotify vlc brave.* --seek-back
+Mod1 XF86AudioNext :Exec ns-gui-utility media-control spotify vlc brave.* --seek-ahead
 # no mute command exists
 #Mod1 XF86AudioMute :Exec ns-gui-utility media-control spotify vlc brave.* --mute-toggle
 XF86AudioNext :Exec ns-gui-utility media-control spotify vlc brave.* --next
@@ -93,7 +95,7 @@ Mod1 F11 :Fullscreen
 Mod1 space :WindowMenu
 
 # exit fluxbox
-Control Mod1 Delete :Exit
+#Control Mod1 Delete :Exit
 
 # change to previous/next workspace
 Control Mod1 Left :PrevWorkspace

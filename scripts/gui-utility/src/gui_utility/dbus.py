@@ -107,7 +107,7 @@ class BusCtl:
         return [
             DBusValue.from_json(line)
             for line in self.tool.invoke(
-                ["--json=short", "--user"] + arguments
+                ["--json=short", "--user", "--"] + arguments
             ).splitlines()
         ]
 
