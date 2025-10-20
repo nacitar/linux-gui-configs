@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import logging
+import re
 from dataclasses import dataclass, field
 from typing import Sequence
 
@@ -14,20 +15,33 @@ logger = logging.getLogger(__name__)
 # TODO: parsing of Metadata property.
 @dataclass(kw_only=True)
 class MediaControl:
-    service: str
+    services: list[str]
     object_path: str = "/org/mpris/MediaPlayer2"
     interface: str = "org.mpris.MediaPlayer2.Player"
     busctl: BusCtl = field(default_factory=lambda: BusCtl())
 
     def __post_init__(self) -> None:
-        if not self.service:
-            raise ValueError("service must be specified")
-        if not self.service.startswith("org.mpris.MediaPlayer2."):
-            self.service = f"org.mpris.MediaPlayer2.{self.service}"
+        for i in range(len(self.services)):
+            service = self.services[i]
+            if not service:
+                raise ValueError("service must be specified")
+            if not service.startswith("org.mpris.MediaPlayer2."):
+                self.services[i] = f"org.mpris.MediaPlayer2.{service}"
+
+    def first_available_service(self) -> str:
+        available_services: list[str] = self.busctl.list_services()
+        for pattern in self.services:
+            # Escape literal parts, then convert '*' to regex '.*'
+            regex_pattern = "^" + re.escape(pattern).replace(r"\*", ".*") + "$"
+            regex = re.compile(regex_pattern)
+            for name in available_services:
+                if regex.match(name):
+                    return name
+        raise ValueError("No matching service found.")
 
     def get_properties(self, properties: list[str]) -> list[DBusValue]:
         return self.busctl.get_properties(
-            service=self.service,
+            service=self.first_available_service(),
             object_path=self.object_path,
             interface=self.interface,
             properties=properties,
@@ -35,7 +49,7 @@ class MediaControl:
 
     def set_property(self, property: str, value: DBusValue) -> None:
         self.busctl.set_property(
-            service=self.service,
+            service=self.first_available_service(),
             object_path=self.object_path,
             interface=self.interface,
             property=property,
@@ -46,7 +60,7 @@ class MediaControl:
         self, method: str, arguments: list[DBusValue] | None = None
     ) -> list[DBusValue]:
         return self.busctl.call(
-            service=self.service,
+            service=self.first_available_service(),
             object_path=self.object_path,
             interface=self.interface,
             method=method,
@@ -116,12 +130,12 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
     add_log_arguments(parser)
     parser.add_argument(
-        "service", help="The name of the media player's service"
-    )
-    parser.add_argument(
-        "--prefix",
-        action="store_true",
-        help="Match the service name as a prefix.",
+        "services",
+        nargs="+",
+        help=(
+            "The service names to try to match, in order of preference."
+            "  Wildcards are supported via '*' characters."
+        ),
     )
     volume_group = parser.add_mutually_exclusive_group()
     volume_group.add_argument(
@@ -159,23 +173,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
     args = parser.parse_args(args=argv)
     configure_logging(args)
-    media_control = MediaControl(service=args.service)
-    if args.prefix:
-        matched_service = next(
-            (
-                service
-                for service in media_control.busctl.list_services()
-                if service.startswith(media_control.service)
-            ),
-            None,
-        )
-        if matched_service:
-            if matched_service != media_control.service:
-                logger.info(
-                    f"updated service via prefix match to {matched_service}"
-                )
-            media_control.service = matched_service
-
+    media_control = MediaControl(services=args.services)
     if args.volume_set is not None:
         media_control.volume_set(args.volume_set)
     if args.volume_adjust is not None:

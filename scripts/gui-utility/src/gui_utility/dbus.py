@@ -21,7 +21,12 @@ class DBusValue:
 
     def to_str_array(self) -> list[str]:
         if self.type == "as":
-            return list(self.value)
+            if (
+                isinstance(self.value, list)
+                and len(self.value) == 1
+                and isinstance(self.value[0], list)
+            ):
+                return list(self.value[0])
         raise ValueError(f"not a list[str] type: {self.type}")
 
     @classmethod
@@ -144,7 +149,7 @@ class BusCtl:
             raise ValueError(
                 f"busctl had unexpected output listing services: {values}"
             )
-        return values[0].to_str_array()[0]
+        return values[0].to_str_array()
 
     def get_properties(
         self,
