@@ -30,12 +30,12 @@ class MediaControl:
 
     def first_available_service(self) -> str:
         available_services: list[str] = self.busctl.list_services()
-        for pattern in self.services:
-            # Escape literal parts, then convert '*' to regex '.*'
-            regex_pattern = "^" + re.escape(pattern).replace(r"\*", ".*") + "$"
-            regex = re.compile(regex_pattern)
+        for service in self.services:
+            pattern = re.compile(
+                ".*".join(re.escape(value) for value in service.split("*"))
+            )
             for name in available_services:
-                if regex.match(name):
+                if pattern.fullmatch(name):
                     return name
         raise ValueError("No matching service found.")
 
