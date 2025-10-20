@@ -116,7 +116,12 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
     add_log_arguments(parser)
     parser.add_argument(
-        "service", help="the name of the media player's service"
+        "service", help="The name of the media player's service"
+    )
+    parser.add_argument(
+        "--prefix",
+        action="store_true",
+        help="Match the service name as a prefix.",
     )
     volume_group = parser.add_mutually_exclusive_group()
     volume_group.add_argument(
@@ -155,6 +160,22 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = parser.parse_args(args=argv)
     configure_logging(args)
     media_control = MediaControl(service=args.service)
+    if args.prefix:
+        matched_service = next(
+            (
+                service
+                for service in media_control.busctl.list_services()
+                if service.startswith(media_control.service)
+            ),
+            None,
+        )
+        if matched_service:
+            if matched_service != media_control.service:
+                logger.info(
+                    f"updated service via prefix match to {matched_service}"
+                )
+            media_control.service = matched_service
+
     if args.volume_set is not None:
         media_control.volume_set(args.volume_set)
     if args.volume_adjust is not None:

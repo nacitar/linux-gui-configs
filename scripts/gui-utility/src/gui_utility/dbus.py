@@ -133,6 +133,19 @@ class BusCtl:
             ],
         )
 
+    def list_services(self, prefix: str = "") -> list[str]:
+        values = self.call(
+            service="org.freedesktop.DBus",
+            object_path="/org/freedesktop/DBus",
+            interface="org.freedesktop.DBus",
+            method="ListNames",
+        )
+        if len(values) != 1:
+            raise ValueError(
+                f"busctl had unexpected output listing services: {values}"
+            )
+        return values[0].to_str_array()[0]
+
     def get_properties(
         self,
         service: str,
