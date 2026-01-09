@@ -34,9 +34,9 @@
     },
     "office": {
       "pactl_sink_option_regexes": [
+        ".*\\.analog-stereo",
         ".*\\.hdmi-stereo",
-        ".*\\.usb-.*[Mm]icrophone.*\\.[^.]+-stereo",
-        ".*\\.analog-stereo"
+        ".*\\.usb-.*[Mm]icrophone.*\\.[^.]+-stereo"
       ],
       "outputs": {
         "HDMI-0": {
