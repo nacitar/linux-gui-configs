@@ -41,7 +41,9 @@ class MediaControl:
         for service in self.services:
             pattern = self._service_pattern(service)
             for name in available_services:
-                if pattern.fullmatch(name) and self._is_candidate_service(name):
+                if pattern.fullmatch(name) and self._is_candidate_service(
+                    name
+                ):
                     return name
         raise ValueError("No matching service found.")
 
@@ -57,8 +59,8 @@ class MediaControl:
                 re.escape(value) for value in service.split("*")
             )
             return re.compile(pattern_text)
-        # Treat exact service names as matching instance-suffixed variants too,
-        # e.g. org.mpris.MediaPlayer2.mpv and org.mpris.MediaPlayer2.mpv.instance123.
+        # Treat exact service names as matching instance-suffixed variants.
+        # Example: org.mpris.MediaPlayer2.mpv.instance123.
         return re.compile(rf"{re.escape(service)}(?:\..+)?")
 
     def _is_candidate_service(self, service: str) -> bool:
@@ -168,10 +170,20 @@ class MediaControl:
             return None
 
         try:
-            return json.loads(line.decode())
+            decoded: object = json.loads(line.decode())
         except json.JSONDecodeError:
             logger.exception("Invalid mpv ipc response: %r", line)
             return None
+        if not isinstance(decoded, dict):
+            logger.debug("Unexpected mpv ipc response type: %r", decoded)
+            return None
+        response: dict[str, object] = {}
+        for key, value in decoded.items():
+            if not isinstance(key, str):
+                logger.debug("Unexpected mpv ipc response keys: %r", decoded)
+                return None
+            response[key] = value
+        return response
 
     def _receive_json_line(self, client: socket.socket) -> bytes | None:
         data = b""
