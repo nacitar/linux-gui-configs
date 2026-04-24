@@ -15,6 +15,12 @@ class DBusValue:
     type: str
     value: Any
 
+    def _scalar_value(self) -> Any:
+        value = self.value
+        if isinstance(value, list) and len(value) == 1:
+            return value[0]
+        return value
+
     @classmethod
     def from_str_array(cls, value: list[str]) -> DBusValue:
         return cls(type="as", value=value)
@@ -54,7 +60,7 @@ class DBusValue:
 
     def __int__(self) -> int:
         if self.type in ["i", "u", "x", "t"]:
-            return int(self.value)
+            return int(self._scalar_value())
         raise ValueError(f"not an integral type: {self.type}")
 
     @classmethod
@@ -63,7 +69,7 @@ class DBusValue:
 
     def __bool__(self) -> bool:
         if self.type == "b":
-            return bool(self.value)
+            return bool(self._scalar_value())
         raise ValueError(f"not a boolean type: {self.type}")
 
     @classmethod
@@ -72,7 +78,7 @@ class DBusValue:
 
     def __float__(self) -> float:
         if self.type == "d":
-            return float(self.value)
+            return float(self._scalar_value())
         raise ValueError(f"not a floating point type: {self.type}")
 
     @classmethod
@@ -81,7 +87,7 @@ class DBusValue:
 
     def __str__(self) -> str:
         if self.type == "s":
-            return str(self.value)
+            return str(self._scalar_value())
         raise ValueError(f"not a string type: {self.type}")
 
     def value_arguments(self) -> list[str]:
@@ -150,6 +156,21 @@ class BusCtl:
                 f"busctl had unexpected output listing services: {values}"
             )
         return values[0].to_str_array()
+
+    def get_connection_unix_process_id(self, service: str) -> int:
+        values = self.call(
+            service="org.freedesktop.DBus",
+            object_path="/org/freedesktop/DBus",
+            interface="org.freedesktop.DBus",
+            method="GetConnectionUnixProcessID",
+            arguments=[DBusValue.from_str(service)],
+        )
+        if len(values) != 1:
+            raise ValueError(
+                "busctl had unexpected output getting "
+                f"connection pid for {service!r}: {values}"
+            )
+        return int(values[0])
 
     def get_properties(
         self,

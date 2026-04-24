@@ -1,15 +1,21 @@
 from __future__ import annotations
 
 import argparse
+import json
 import logging
 import re
+import socket
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Sequence
 
 from .dbus import BusCtl, DBusValue
 from .log_utility import add_log_arguments, configure_logging
 
 logger = logging.getLogger(__name__)
+_MPRIS_ROOT_INTERFACE = "org.mpris.MediaPlayer2"
+_MPRIS_SERVICE_PREFIX = f"{_MPRIS_ROOT_INTERFACE}."
+_REGEX_PREFIX = "re:"
 
 
 # TODO: parsing of Metadata property.
@@ -25,19 +31,158 @@ class MediaControl:
             service = self.services[i]
             if not service:
                 raise ValueError("service must be specified")
-            if not service.startswith("org.mpris.MediaPlayer2."):
-                self.services[i] = f"org.mpris.MediaPlayer2.{service}"
+            if service.startswith(_REGEX_PREFIX):
+                continue
+            if not service.startswith(_MPRIS_SERVICE_PREFIX):
+                self.services[i] = f"{_MPRIS_SERVICE_PREFIX}{service}"
 
     def first_available_service(self) -> str:
         available_services: list[str] = self.busctl.list_services()
         for service in self.services:
-            pattern = re.compile(
-                ".*".join(re.escape(value) for value in service.split("*"))
-            )
+            pattern = self._service_pattern(service)
             for name in available_services:
-                if pattern.fullmatch(name):
+                if pattern.fullmatch(name) and self._is_candidate_service(name):
                     return name
         raise ValueError("No matching service found.")
+
+    def _service_pattern(self, service: str) -> re.Pattern[str]:
+        if service.startswith(_REGEX_PREFIX):
+            pattern_text = (
+                f"{re.escape(_MPRIS_SERVICE_PREFIX)}"
+                f"{service[len(_REGEX_PREFIX) :]}"
+            )
+            return re.compile(pattern_text)
+        if "*" in service:
+            pattern_text = ".*".join(
+                re.escape(value) for value in service.split("*")
+            )
+            return re.compile(pattern_text)
+        # Treat exact service names as matching instance-suffixed variants too,
+        # e.g. org.mpris.MediaPlayer2.mpv and org.mpris.MediaPlayer2.mpv.instance123.
+        return re.compile(rf"{re.escape(service)}(?:\..+)?")
+
+    def _is_candidate_service(self, service: str) -> bool:
+        try:
+            if not self._service_is_mpv(service):
+                return True
+            return not self._is_mpv_idle(service)
+        except Exception as ex:
+            logger.debug(
+                "Candidate check failed for %s; using it", service, exc_info=ex
+            )
+            return True
+
+    def _service_is_mpv(self, service: str) -> bool:
+        try:
+            identity = self.busctl.get_properties(
+                service=service,
+                object_path=self.object_path,
+                interface=_MPRIS_ROOT_INTERFACE,
+                properties=["Identity"],
+            )[0]
+        except Exception as ex:
+            logger.debug(
+                "Failed to read MPRIS identity for %s", service, exc_info=ex
+            )
+            return False
+        return str(identity).strip().lower() == "mpv"
+
+    def _is_mpv_idle(self, service: str) -> bool:
+        try:
+            pid = self.busctl.get_connection_unix_process_id(service)
+        except Exception as ex:
+            logger.debug(
+                "Failed to get pid for service %s", service, exc_info=ex
+            )
+            return False
+
+        socket_path = self._get_mpv_ipc_socket_path(pid)
+        if socket_path is None:
+            logger.debug(
+                "Skipping idle check for %s (pid=%s): no ipc socket",
+                service,
+                pid,
+            )
+            return False
+
+        idle_active = self._get_mpv_idle_active(socket_path)
+        if idle_active is None:
+            logger.debug(
+                "Skipping idle check for %s (pid=%s): ipc query failed",
+                service,
+                pid,
+            )
+            return False
+
+        if idle_active:
+            logger.info("Ignoring idle mpv service: %s", service)
+        return idle_active
+
+    def _get_mpv_ipc_socket_path(self, pid: int) -> str | None:
+        cmdline_path = Path(f"/proc/{pid}/cmdline")
+        try:
+            values = cmdline_path.read_bytes().split(b"\0")
+        except OSError as ex:
+            logger.debug("Failed to read cmdline for pid %s", pid, exc_info=ex)
+            return None
+
+        prefix = b"--input-ipc-server="
+        for value in values:
+            if value.startswith(prefix):
+                socket_path = value[len(prefix) :].decode(errors="replace")
+                if socket_path.startswith("@"):
+                    return f"\0{socket_path[1:]}"
+                return socket_path
+        return None
+
+    def _get_mpv_idle_active(self, socket_path: str) -> bool | None:
+        payload = {"command": ["get_property", "idle-active"], "request_id": 1}
+        response = self._query_mpv_ipc(socket_path, payload)
+        if response is None:
+            return None
+
+        if response.get("error") != "success":
+            return None
+
+        value = response.get("data")
+        if not isinstance(value, bool):
+            return None
+        return value
+
+    def _query_mpv_ipc(
+        self, socket_path: str, payload: dict[str, object]
+    ) -> dict[str, object] | None:
+        try:
+            with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as client:
+                client.settimeout(0.75)
+                client.connect(socket_path)
+                client.sendall((json.dumps(payload) + "\n").encode())
+                line = self._receive_json_line(client)
+        except OSError as ex:
+            logger.debug(
+                "Failed to query mpv ipc at %r", socket_path, exc_info=ex
+            )
+            return None
+
+        if line is None:
+            return None
+
+        try:
+            return json.loads(line.decode())
+        except json.JSONDecodeError:
+            logger.exception("Invalid mpv ipc response: %r", line)
+            return None
+
+    def _receive_json_line(self, client: socket.socket) -> bytes | None:
+        data = b""
+        while b"\n" not in data:
+            chunk = client.recv(4096)
+            if not chunk:
+                break
+            data += chunk
+        if not data:
+            return None
+        return data.split(b"\n", 1)[0]
 
     def get_properties(self, properties: list[str]) -> list[DBusValue]:
         return self.busctl.get_properties(
@@ -138,6 +283,13 @@ def main(argv: Sequence[str] | None = None) -> int:
         help=(
             "The service names to try to match, in order of preference."
             "  Wildcards are supported via '*' characters."
+            "  Exact names also match instance suffixes, so 'mpv' matches"
+            " both org.mpris.MediaPlayer2.mpv and"
+            " org.mpris.MediaPlayer2.mpv.instance-..."
+            "  Use 're:<pattern>' for regex mode, e.g."
+            " 're:mpv(\\..*)?'."
+            "  In regex mode, the pattern applies after"
+            " 'org.mpris.MediaPlayer2.'."
         ),
     )
     volume_group = parser.add_mutually_exclusive_group()

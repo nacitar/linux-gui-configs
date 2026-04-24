@@ -123,6 +123,7 @@ def configure_logging(
                 max_kb=max_kb,  # 0 for unbounded size and no rotation
                 backup_count=backup_count,  # 0 for no rolling backups
                 append=append,
+                level=logging.INFO,
             )
         ),
     )

@@ -73,16 +73,16 @@ Mod4 apostrophe :Exec ns-gui-utility output-profile --cycle-pactl-sink
 XF86AudioRaiseVolume :Exec amixer sset Master 2%+
 XF86AudioLowerVolume :Exec amixer sset Master 2%-
 XF86AudioMute :Exec amixer sset Master toggle
-Mod1 XF86AudioRaiseVolume :Exec ns-gui-utility media-control mpv spotify vlc brave.* --volume-adjust 2
-Mod1 XF86AudioLowerVolume :Exec ns-gui-utility media-control mpv spotify vlc brave.* --volume-adjust -2
-Mod1 XF86AudioPrev :Exec ns-gui-utility media-control mpv spotify vlc brave.* --seek-back
-Mod1 XF86AudioNext :Exec ns-gui-utility media-control mpv spotify vlc brave.* --seek-ahead
+Mod1 XF86AudioRaiseVolume :Exec ns-gui-utility media-control mpv spotify vlc brave --volume-adjust 2
+Mod1 XF86AudioLowerVolume :Exec ns-gui-utility media-control mpv spotify vlc brave --volume-adjust -2
+Mod1 XF86AudioPrev :Exec ns-gui-utility media-control mpv spotify vlc brave --seek-back
+Mod1 XF86AudioNext :Exec ns-gui-utility media-control mpv spotify vlc brave --seek-ahead
 # no mute command exists
-#Mod1 XF86AudioMute :Exec ns-gui-utility media-control mpv spotify vlc brave.* --mute-toggle
-XF86AudioNext :Exec ns-gui-utility media-control mpv spotify vlc brave.* --next
-XF86AudioPlay :Exec ns-gui-utility media-control mpv spotify vlc brave.* --play-toggle
-XF86AudioPrev :Exec ns-gui-utility media-control mpv spotify vlc brave.* --previous
-XF86AudioStop :Exec ns-gui-utility media-control mpv spotify vlc brave.* --stop
+#Mod1 XF86AudioMute :Exec ns-gui-utility media-control mpv spotify vlc brave --mute-toggle
+XF86AudioNext :Exec ns-gui-utility media-control mpv spotify vlc brave --next
+XF86AudioPlay :Exec ns-gui-utility media-control mpv spotify vlc brave --play-toggle
+XF86AudioPrev :Exec ns-gui-utility media-control mpv spotify vlc brave --previous
+XF86AudioStop :Exec ns-gui-utility media-control mpv spotify vlc brave --stop
 
 # current window commands
 Mod1 F4 :Close
