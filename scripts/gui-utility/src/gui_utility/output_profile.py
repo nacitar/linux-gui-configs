@@ -197,13 +197,13 @@ class ProfileSelector:
         if self.current_profile:
             profile = self.settings.profiles[self.current_profile]
             if profile.pactl_sink_option_regexes:
-                remaining_sinks: set[Sink] = set(candidate_sinks)
+                remaining_sinks = dict.fromkeys(candidate_sinks)
                 filtered_sinks: list[Sink] = []
                 for pactl_sink_regex in profile.pactl_sink_option_regexes:
                     pattern = re.compile(pactl_sink_regex)
-                    for sink in remaining_sinks:
+                    for sink in remaining_sinks.keys():
                         if pattern.match(sink.name):
-                            remaining_sinks.remove(sink)
+                            del remaining_sinks[sink]
                             filtered_sinks.append(sink)
                             break
                 if filtered_sinks:
