@@ -10,8 +10,8 @@
   "profiles": {
     "single": {
       "pactl_sink_option_regexes": [
-        ".*\\.analog-stereo",
-        ".*\\.usb-.*[Mm]icrophone.*\\.[^.]+-stereo"
+        "alsa_output\\.pci-.*\\.analog-stereo",
+        "alsa_output\\.usb-.*[Mm]icrophone.*\\.[^.]+-stereo"
       ],
       "outputs": {
         "DP-2": {
@@ -34,9 +34,9 @@
     },
     "office": {
       "pactl_sink_option_regexes": [
-        ".*\\.analog-stereo",
-        ".*\\.hdmi-stereo",
-        ".*\\.usb-.*[Mm]icrophone.*\\.[^.]+-stereo"
+        "alsa_output\\.pci-.*\\.analog-stereo",
+        "alsa_output\\.pci-.*\\.hdmi-stereo",
+        "alsa_output\\.usb-.*[Mm]icrophone.*\\.[^.]+-stereo"
       ],
       "outputs": {
         "HDMI-0": {
