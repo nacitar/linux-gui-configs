@@ -8,8 +8,11 @@ from websockets.sync.server import serve
 
 
 class WebSocketBroadcaster:
-    def __init__(self, port: int, *, path: str, banner: str):
+    def __init__(
+        self, port: int, *, path: str, banner: str, host: str = "localhost"
+    ):
         self._port = port
+        self._host = host
         self._path = path
         self._banner = banner
         self._clients: set[Connection] = set()
@@ -19,7 +22,7 @@ class WebSocketBroadcaster:
         thread.start()
 
     def _run_server(self) -> None:
-        serve(self._handler, host="localhost", port=self._port).serve_forever()
+        serve(self._handler, host=self._host, port=self._port).serve_forever()
 
     def _handler(self, ws: Connection) -> None:
         if ws.request is None or ws.request.path != self._path:
