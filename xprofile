@@ -34,6 +34,7 @@ export DISPLAY_SERVICE_LOG_DIR
 # background services
 pushd "${DISPLAY_SERVICE_LOG_DIR}" &>/dev/null
 env >xenv
+command -v snixembed &>/dev/null && snixembed &>snixembed.log &
 command -v blueman-applet &>/dev/null && blueman-applet &>blueman-applet.log &
 command -v ns-gui-utility &>/dev/null \
     && ns-gui-utility battery-monitor --log-file=battery-monitor.log &
