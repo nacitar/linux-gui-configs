@@ -12,8 +12,26 @@ git clone https://github.com/nacitar/linux-gui-configs.git "${HOME}/.gui"
 ```
 
 # Dependencies
-For the battery-monitor to function, certain system dependencies are required.
-For ArchLinux, install them via:
-```
-pacman -S gtk3 gobject-introspection libgdk-pixbuf2
+
+| Dependency | Enables |
+| --- | --- |
+| `fluxbox` | Window manager |
+| `picom` | Compositing |
+| `dunst` | Notifications |
+| `snixembed` | Modern (StatusNotifier) tray icon support |
+| `blueman` | Bluetooth applet |
+| `playerctl` | Media key control |
+| `av-output-switcher` | Display, audio, and primary-monitor output switching |
+| `battery-tray` | Battery status in the system tray |
+
+`av-output-switcher` and `battery-tray` are Python tools installed with `uv`;
+the rest are ArchLinux packages. `av-output-switcher` also shells out to
+`xrandr`, `xprop`, and `pactl` (the `xorg-xrandr`, `xorg-xprop`, and
+`libpulse` packages).
+
+Installation (ArchLinux):
+```bash
+pacman -S fluxbox picom dunst snixembed blueman playerctl \
+    xorg-xrandr xorg-xprop libpulse
+uv tool install av-output-switcher battery-tray
 ```

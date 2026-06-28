@@ -1,0 +1,29 @@
+#!/bin/bash
+# Control the first available MPRIS player by precedence.
+#
+# An instance of mpv always runs in the background when using plex-mpv-shim,
+# and if that instance isn't open with a video connected to it the status it
+# reports will be "Stopped".  Other instances of mpv will never report that
+# status because when you stop them the player exits.  This allows using the
+# reported status to prevent the plex-mpv-shim instance of mpv from always
+# being sent the MPRIS messages even when it isn't playing anything, but still
+# be sent the messages when it is actually in use.
+#
+# Players are listed and targeted by their exact playerctl name; the remaining
+# arguments pass straight through to playerctl.
+# 
+# Usage: mpris-control <playerctl-verb> [arguments...]
+set -eu
+shopt -s extglob
+DEFAULT_PRECEDENCE='mpv vlc spotify brave firefox chrome'
+available_players=$(playerctl --list-all 2>/dev/null)
+for target_player in ${MPRIS_PLAYER_PRECEDENCE:-${DEFAULT_PRECEDENCE}}; do
+    for player in ${available_players}; do
+        [[ \
+            ${player} != "${target_player}"?(.*) \
+            || ${player} == mpv?(.*) \
+            && $(playerctl -p "${player}" status 2>/dev/null) == Stopped \
+        ]] || exec playerctl -p "${player}" "${@}"
+    done
+done
+exit 1

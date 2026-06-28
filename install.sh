@@ -53,8 +53,6 @@ if [[ ! -d ${HOME} ]]; then
     error "ERROR: HOME is not defined; exiting for safety..."
 fi
 config_home=${XDG_CONFIG_HOME:-${HOME}/.config}
-gui_config_dir=${config_home}/ns-gui-utility
-mkdir -p "${gui_config_dir}"
 
 symlink_overwrite() {
     if (( ${#} != 2 )); then
@@ -80,21 +78,25 @@ symlink_overwrite "${script_dir}/fluxbox" "${HOME}/.fluxbox"
 symlink_overwrite "${script_dir}/picom.conf" "${config_home}/picom.conf"
 symlink_overwrite "${script_dir}/kitty" "${config_home}/kitty"
 if [[ -n ${pc_dir} ]]; then
+    # av-output-switcher reads its config from the platformdirs location
+    # (<config>/sevaht/av-output-switcher); see that project for details.
+    output_switcher_config_dir=${config_home}/sevaht/av-output-switcher
+    mkdir -p "${output_switcher_config_dir}"
     symlink_overwrite \
-        "${pc_dir}/output-profiles.json" \
-        "${gui_config_dir}/output-profiles.json"
+        "${pc_dir}/profiles.json" \
+        "${output_switcher_config_dir}/profiles.json"
     symlink_overwrite \
-        "${pc_dir}/on-output-profile-change" \
-        "${gui_config_dir}/on-output-profile-change"
+        "${pc_dir}/on-profile-change" \
+        "${output_switcher_config_dir}/on-profile-change"
     symlink_overwrite \
         "${pc_dir}/on-primary-output-change" \
-        "${gui_config_dir}/on-primary-output-change"
+        "${output_switcher_config_dir}/on-primary-output-change"
 fi
 
 path_d_dir="${HOME}/.integration/path.d"
 if [[ -d ${path_d_dir} ]]; then
     symlink_overwrite \
-        "${script_dir}/scripts/bin" \
+        "${script_dir}/bin" \
         "${path_d_dir}/ns-gui-configs-bin"
 else
     error \
