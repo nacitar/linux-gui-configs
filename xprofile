@@ -36,8 +36,7 @@ pushd "${DISPLAY_SERVICE_LOG_DIR}" &>/dev/null
 env >xenv
 command -v snixembed &>/dev/null && snixembed &>snixembed.log &
 command -v blueman-applet &>/dev/null && blueman-applet &>blueman-applet.log &
-command -v ns-gui-utility &>/dev/null \
-    && ns-gui-utility battery-monitor --log-file=battery-monitor.log &
+command -v battery-tray &>/dev/null && battery-tray --log-file=battery-tray.log &
 command -v steam &>/dev/null && steam -silent &>steam.log &
 command -v plex-mpv-shim &>/dev/null && plex-mpv-shim &>plex-mpv-shim.log &
 popd &>/dev/null
