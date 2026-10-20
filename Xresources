@@ -5,3 +5,8 @@ Xft.hinting: 1
 Xft.antialias: 1
 Xft.rgba: rgb
 Xft.dpi: 96
+
+! xterm and uxterm: black background with light text. The foreground has to be
+! set as well, because the default text color is black.
+XTerm*VT100.background: black
+XTerm*VT100.foreground: #dddddd

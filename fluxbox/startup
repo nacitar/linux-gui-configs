@@ -13,7 +13,7 @@ env > xenv
 # remove any previously set wallpaper; this is handled elsewhere (.xprofile)
 rm -f "${HOME}/.fluxbox/lastwallpaper"
 # background services
-command -v picom &>/dev/null && picom &>picom.log &
+#command -v picom &>/dev/null && picom &>picom.log &
 command -v dunst &>/dev/null && dunst &>dunst.log &
 popd &>/dev/null
 exec fluxbox
